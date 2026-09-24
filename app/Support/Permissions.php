@@ -20,6 +20,12 @@ class Permissions
      * and are flagged in the roles UI.
      */
     public const CATALOG = [
+        'portal' => [
+            'label' => 'بوابة المتدرب',
+            'permissions' => [
+                'portal.view' => ['الدخول إلى بوابة المتدرب', false],
+            ],
+        ],
         'dashboard' => [
             'label' => 'لوحة التحكم',
             'permissions' => [
@@ -272,6 +278,14 @@ class Permissions
             'appointments.view', 'appointments.complete',
             'evaluations.view', 'evaluations.manage',
         ],
+
+        // A trainee sees only their own file, through the portal. Deliberately
+        // no `trainees.view`, `appointments.view` or `payments.view`: those are
+        // center-wide permissions, and the portal reads the signed-in trainee's
+        // own records directly instead.
+        'trainee' => [
+            'portal.view',
+        ],
     ];
 
     public const ROLE_LABELS = [
@@ -281,5 +295,6 @@ class Permissions
         'accountant' => 'محاسب',
         'training_supervisor' => 'مشرف تدريب',
         'trainer' => 'مدرب',
+        'trainee' => 'متدرب',
     ];
 }

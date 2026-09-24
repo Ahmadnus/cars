@@ -30,7 +30,7 @@ class LoginController extends Controller
     public function show(): View|RedirectResponse
     {
         return Auth::check()
-            ? redirect()->route('admin.dashboard')
+            ? redirect()->to($this->homeFor(Auth::user()))
             : view('auth.login');
     }
 
@@ -91,7 +91,7 @@ class LoginController extends Controller
         // Pin the user to a branch they can actually reach.
         app(BranchContext::class)->forget();
 
-        return redirect()->intended(route('admin.dashboard'))
+        return redirect()->intended($this->homeFor($user))
             ->with('toast', ['type' => 'success', 'message' => 'مرحباً بك، '.$user->name]);
     }
 
@@ -108,6 +108,20 @@ class LoginController extends Controller
         $request->session()->regenerateToken();
 
         return redirect()->route('login')->with('status', 'تم تسجيل الخروج بنجاح.');
+    }
+
+    /**
+     * Where this account belongs after signing in.
+     *
+     * A trainee holds `portal.view` and not `dashboard.view`, so sending them
+     * to the admin dashboard would land them on a 403 immediately after a
+     * successful login.
+     */
+    protected function homeFor(User $user): string
+    {
+        return $user->can('dashboard.view')
+            ? route('admin.dashboard')
+            : route('portal.index');
     }
 
     // ------------------------------------------------------------------

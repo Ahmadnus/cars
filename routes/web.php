@@ -33,6 +33,7 @@ use App\Http\Controllers\Admin\VehicleController;
 use App\Http\Controllers\Admin\VehicleMaintenanceController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\PasswordResetController;
+use App\Http\Controllers\Portal\PortalController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -56,6 +57,23 @@ Route::middleware('guest')->group(function () {
 Route::post('/logout', [LoginController::class, 'destroy'])->name('logout')->middleware('auth');
 
 Route::redirect('/', '/dashboard');
+
+/*
+|--------------------------------------------------------------------------
+| Trainee portal
+|--------------------------------------------------------------------------
+|
+| A trainee's own file, and the only authenticated surface their role can
+| reach. There is no id in the route: the controller resolves the record from
+| the signed-in user, so one trainee cannot address another's data.
+|
+*/
+
+Route::middleware(['auth', 'active', 'permission:portal.view'])
+    ->prefix('portal')->name('portal.')
+    ->group(function () {
+        Route::get('/', [PortalController::class, 'index'])->name('index');
+    });
 
 /*
 |--------------------------------------------------------------------------
