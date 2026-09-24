@@ -2,8 +2,14 @@
 
 namespace Tests\Feature;
 
+use App\Models\Package;
+use App\Models\PaymentMethod;
 use App\Models\Trainee;
+use App\Models\Trainer;
+use App\Models\TrainingSession;
 use App\Models\User;
+use App\Services\PackageService;
+use App\Services\PaymentService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -49,6 +55,60 @@ class TraineePortalTest extends TestCase
             ->assertOk()
             ->assertSee($trainee->full_name)
             ->assertSee($trainee->trainee_number);
+    }
+
+    /**
+     * Every panel rendered at once.
+     *
+     * The first version of this test only ever seeded a bare trainee, so the
+     * package, history and payment branches were never executed and a bad
+     * relation name reached production. Each panel now has data.
+     */
+    public function test_the_portal_renders_a_full_file(): void
+    {
+        $trainee = $this->trainee();
+        $trainer = Trainer::factory()->create(['branch_id' => $this->branch->id]);
+        $package = Package::factory()->create(['lessons_count' => 10, 'price' => 300]);
+
+        $trainee->forceFill(['trainer_id' => $trainer->id])->save();
+
+        $assigned = app(PackageService::class)->assign($trainee, $package, [
+            'discount_percent' => 0,
+        ]);
+
+        // A finished lesson carrying a rating, which is what the history panel
+        // and its rating badge read.
+        TrainingSession::create([
+            'branch_id' => $this->branch->id,
+            'trainee_id' => $trainee->id,
+            'trainer_id' => $trainer->id,
+            'trainee_package_id' => $assigned->id,
+            'scheduled_date' => $this->pastWorkingDay()->toDateString(),
+            'start_time' => '09:00',
+            'end_time' => '09:45',
+            'duration_minutes' => 45,
+            'status' => 'completed',
+            'completed_at' => now(),
+            'overall_rating' => 'very_good',
+        ]);
+
+        app(PaymentService::class)->record([
+            'trainee_id' => $trainee->id,
+            'trainee_package_id' => $assigned->id,
+            'amount' => 100,
+            'payment_method_id' => PaymentMethod::first()->id,
+            'paid_on' => now()->toDateString(),
+        ], $this->branch->id);
+
+        $response = $this->actingAsUser($this->traineeUser($trainee))
+            ->get(route('portal.index'))
+            ->assertOk();
+
+        $response->assertSee($trainee->full_name);
+        $response->assertSee($trainer->full_name);
+        $response->assertSee($package->name);
+        $response->assertSee('جيد جداً');   // the lesson's rating
+        $response->assertSee('مدفوعاتي');
     }
 
     public function test_the_portal_never_names_another_trainee(): void

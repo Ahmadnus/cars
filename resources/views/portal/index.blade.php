@@ -141,8 +141,8 @@
                                 </p>
                             </div>
                             <div class="flex shrink-0 items-center gap-2">
-                                @if ($session->evaluation?->overall_rating)
-                                    <x-ui.status :value="$session->evaluation->overall_rating" type="rating" />
+                                @if ($session->overall_rating)
+                                    <x-ui.status :value="$session->overall_rating" type="rating" />
                                 @endif
                                 <x-ui.status :value="$session->status" type="session" />
                             </div>

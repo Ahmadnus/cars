@@ -41,7 +41,7 @@ class PortalController extends Controller
             ->get();
 
         $history = $trainee->trainingSessions()
-            ->with(['trainer:id,uuid,full_name', 'evaluation'])
+            ->with('trainer:id,uuid,full_name')
             ->whereIn('training_sessions.status', ['completed', 'no_show'])
             ->orderByDesc('scheduled_date')->orderByDesc('start_time')
             ->limit(15)
