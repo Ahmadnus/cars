@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\BookingRequestController;
 use App\Http\Controllers\Api\V1\DashboardController;
 use App\Http\Controllers\Api\V1\FinanceController;
+use App\Http\Controllers\Api\V1\MeController;
 use App\Http\Controllers\Api\V1\NotificationController;
 use App\Http\Controllers\Api\V1\TraineeController;
 use App\Http\Controllers\Api\V1\TrainerController;
@@ -42,6 +43,23 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
 
     Route::get('home/trainer', [DashboardController::class, 'trainerHome'])->name('home.trainer');
     Route::get('home/trainee', [DashboardController::class, 'traineeHome'])->name('home.trainee');
+
+    /*
+     | The signed-in trainee's own file, for the Trainee app.
+     |
+     | These carry no `permission:` middleware because there is nothing to
+     | authorise beyond being a trainee: no route takes an id, so each endpoint
+     | can only ever return the caller's own record. Granting `trainees.view`
+     | instead would have opened every trainee in the center.
+     */
+    Route::prefix('me')->name('me.')->group(function () {
+        Route::get('home', [MeController::class, 'home'])->name('home');
+        Route::get('sessions', [MeController::class, 'sessions'])->name('sessions');
+        Route::get('sessions/{session}', [MeController::class, 'show'])->name('sessions.show');
+        Route::get('skills', [MeController::class, 'skills'])->name('skills');
+        Route::get('packages', [MeController::class, 'packages'])->name('packages');
+        Route::get('payments', [MeController::class, 'payments'])->name('payments');
+    });
 
     // --------------------------------------------------------------- trainees
     Route::post('trainees', [TraineeController::class, 'store'])

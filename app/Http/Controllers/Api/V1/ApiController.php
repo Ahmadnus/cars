@@ -40,8 +40,18 @@ abstract class ApiController extends Controller
      * Wrap a paginated result, lifting the pagination details into `meta` so
      * `data` is always a plain array the client can map over.
      */
-    protected function paginated(LengthAwarePaginator $paginator, string $resource, ?string $message = null): JsonResponse
-    {
+    /**
+     * @param  array<string, mixed>  $meta  Extra meta merged alongside the
+     *                                      pagination keys, for totals that
+     *                                      describe the whole set rather than
+     *                                      the current page.
+     */
+    protected function paginated(
+        LengthAwarePaginator $paginator,
+        string $resource,
+        ?string $message = null,
+        array $meta = [],
+    ): JsonResponse {
         return $this->respond(
             true,
             $message ?? 'تم جلب البيانات بنجاح.',
@@ -52,6 +62,7 @@ abstract class ApiController extends Controller
                 'per_page' => $paginator->perPage(),
                 'total' => $paginator->total(),
                 'has_more' => $paginator->hasMorePages(),
+                ...$meta,
             ],
         );
     }
