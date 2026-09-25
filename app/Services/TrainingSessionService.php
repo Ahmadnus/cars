@@ -124,7 +124,7 @@ class TrainingSessionService
     /** Record an absence; by policy this normally burns the lesson. */
     public function markNoShow(TrainingSession $session, ?string $note = null): TrainingSession
     {
-        return DB::transaction(function () use ($session, $note) {
+        $updated = DB::transaction(function () use ($session, $note) {
             if ($session->isSettled()) {
                 throw BusinessRuleException::make('لا يمكن تعديل حصة منتهية أو ملغاة.');
             }
@@ -152,6 +152,22 @@ class TrainingSessionService
 
             return $session->fresh();
         });
+
+        /*
+         | Announced after the commit, never inside the transaction.
+         |
+         | A notification talks to a push or SMS provider over the network. Doing
+         | that with the transaction open would hold row locks on the lesson and
+         | the lesson balance for as long as the provider takes to answer, and a
+         | provider timeout would roll back a no-show that really happened.
+         */
+        try {
+            $this->notifications->sessionMissed($updated);
+        } catch (\Throwable $e) {
+            report($e);
+        }
+
+        return $updated;
     }
 
     /**

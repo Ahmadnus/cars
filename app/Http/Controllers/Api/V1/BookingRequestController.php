@@ -105,16 +105,13 @@ class BookingRequestController extends ApiController
 
             $this->audit->logCreate('booking_request.created', $bookingRequest, 'طلب من تطبيق المتدرب');
 
-            // Tell the staff who can act on it.
-            $this->notifications->notify(
-                $this->staffFor($trainee->branch_id),
-                'booking_request.created',
-                'طلب جديد من متدرب',
-                "قدّم المتدرب {$trainee->full_name} طلباً جديداً بانتظار المراجعة.",
-                ['request_uuid' => $bookingRequest->uuid],
-                route('admin.booking-requests.index', [], false),
-                'warning',
-            );
+            // Tell the staff who can act on it. The service names the type, so a
+            // receptionist sees "طلب تأجيل حصة" rather than a generic "طلب جديد"
+            // and can judge the urgency without opening it.
+            $this->notifications->bookingRequestRaised($bookingRequest);
+
+            // And put it on the dashboard queue without a refresh.
+            \App\Events\BookingRequestUpdated::dispatch($bookingRequest, 'created');
 
             return $bookingRequest;
         });

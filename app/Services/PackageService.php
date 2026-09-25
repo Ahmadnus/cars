@@ -20,6 +20,7 @@ class PackageService
     public function __construct(
         protected TraineeBalanceService $balances,
         protected AuditLogger $audit,
+        protected NotificationService $notifications,
     ) {
     }
 
@@ -28,7 +29,7 @@ class PackageService
      */
     public function assign(Trainee $trainee, Package $package, array $options = []): TraineePackage
     {
-        return DB::transaction(function () use ($trainee, $package, $options) {
+        $enrolment = DB::transaction(function () use ($trainee, $package, $options) {
             if ($trainee->isClosed()) {
                 throw BusinessRuleException::make('لا يمكن إسناد باقة لمتدرب منتهٍ أو ملغى.');
             }
@@ -84,6 +85,19 @@ class PackageService
 
             return $enrolment->fresh();
         });
+
+        /*
+         | Told after the commit: being assigned a package is the moment a trainee
+         | can start booking, so it is worth a notification — and a slow provider
+         | must not hold locks on the enrolment and the lesson ledger.
+         */
+        try {
+            $this->notifications->packageAssigned($enrolment);
+        } catch (\Throwable $e) {
+            report($e);
+        }
+
+        return $enrolment;
     }
 
     /**

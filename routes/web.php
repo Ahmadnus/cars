@@ -17,6 +17,7 @@ use App\Http\Controllers\Admin\PayrollController;
 use App\Http\Controllers\Admin\ProfileController;
 use App\Http\Controllers\Admin\ProfitController;
 use App\Http\Controllers\Admin\RecurringExpenseController;
+use App\Http\Controllers\Admin\RegistrationRequestController;
 use App\Http\Controllers\Admin\ReportController;
 use App\Http\Controllers\Admin\RoleController;
 use App\Http\Controllers\Admin\SettingsController;
@@ -126,6 +127,23 @@ Route::middleware(['auth', 'active'])->name('admin.')->group(function () {
     Route::middleware('permission:appointments.complete')->group(function () {
         Route::post('/sessions/{session}/complete', [TrainingSessionController::class, 'complete'])->name('sessions.complete');
         Route::post('/sessions/{session}/no-show', [TrainingSessionController::class, 'noShow'])->name('sessions.no-show');
+    });
+
+    /*
+     | Join requests from the public app.
+     |
+     | Reading the queue and deciding on it are separate permissions: a
+     | supervisor should see what is coming without being able to let a stranger
+     | into the training records.
+     */
+    Route::prefix('registrations')->name('registrations.')->group(function () {
+        Route::get('/', [RegistrationRequestController::class, 'index'])
+            ->middleware('permission:registrations.view')->name('index');
+
+        Route::middleware('permission:registrations.manage')->group(function () {
+            Route::post('/{registrationRequest}/approve', [RegistrationRequestController::class, 'approve'])->name('approve');
+            Route::post('/{registrationRequest}/reject', [RegistrationRequestController::class, 'reject'])->name('reject');
+        });
     });
 
     Route::middleware('permission:booking_requests.manage')->prefix('booking-requests')->name('booking-requests.')->group(function () {

@@ -82,6 +82,22 @@ return [
     'fcm' => [
         'project_id' => env('FCM_PROJECT_ID'),
         'credentials' => env('FCM_CREDENTIALS_PATH'),
+
+        /*
+        | Browser push for the dashboard.
+        |
+        | Every value here is public by design: the web SDK ships them to the
+        | browser, and the VAPID *public* key is half of a pair whose private
+        | half never leaves Google. None of this is a secret — the service
+        | account above is.
+        */
+        'web' => [
+            'api_key' => env('FCM_WEB_API_KEY'),
+            'auth_domain' => env('FCM_WEB_AUTH_DOMAIN'),
+            'app_id' => env('FCM_WEB_APP_ID'),
+            'sender_id' => env('FCM_WEB_SENDER_ID'),
+            'vapid_key' => env('FCM_WEB_VAPID_KEY'),
+        ],
     ],
 
 ];

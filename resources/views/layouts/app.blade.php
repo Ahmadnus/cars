@@ -5,6 +5,30 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>@yield('title', 'لوحة التحكم') — {{ settings('center.name', config('app.name')) }}</title>
+    @php
+        /*
+         | Web push configuration.
+         |
+         | Built in a @php block rather than inline in @json(): Blade's compiler
+         | mis-parses a multi-line array literal inside a directive's parentheses
+         | and fails with "Unclosed '['".
+         |
+         | Every value is public — the Firebase web SDK ships them to the browser,
+         | and the VAPID key here is the public half of a pair. The service
+         | account that signs sends never leaves the server.
+         */
+        $pushConfig = [
+            'apiKey' => config('services.fcm.web.api_key'),
+            'authDomain' => config('services.fcm.web.auth_domain'),
+            'projectId' => config('services.fcm.project_id'),
+            'senderId' => config('services.fcm.web.sender_id'),
+            'appId' => config('services.fcm.web.app_id'),
+            'vapidKey' => config('services.fcm.web.vapid_key'),
+        ];
+    @endphp
+
+    <script type="application/json" id="push-config">{!! json_encode($pushConfig) !!}</script>
+
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
 <body class="min-h-screen bg-ink-50 text-ink-800">

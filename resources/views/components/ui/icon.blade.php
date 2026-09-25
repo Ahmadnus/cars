@@ -28,6 +28,10 @@
         'chart' => '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
         'file-text' => '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/>',
         'bell' => '<path d="M6 9a6 6 0 1 1 12 0c0 4 1.5 5.5 1.5 5.5h-15S6 13 6 9z"/><path d="M10 18.5a2 2 0 0 0 4 0"/>',
+        // A bell with a plus: the invitation to switch browser push on.
+        // A person with a plus: a join request, someone asking to be added.
+        'user-plus' => '<path d="M15 20v-1a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v1"/><circle cx="8.5" cy="7" r="4"/><path d="M19 8v6"/><path d="M16 11h6"/>',
+        'bell-plus' => '<path d="M15 8a6 6 0 0 1 4.5 6.5h-15S6 13 6 9a6 6 0 0 1 7-5.9"/><path d="M10 18.5a2 2 0 0 0 4 0"/><path d="M18 2v5"/><path d="M15.5 4.5h5"/>',
         'shield' => '<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="m9 12 2 2 4-4"/>',
         'user-cog' => '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 10-5.5"/><circle cx="17.5" cy="17.5" r="2.5"/><path d="M17.5 13.5v1.5M17.5 20v1.5M21 17.5h-1.5M15.5 17.5H14"/>',
         'key' => '<circle cx="8" cy="12" r="4"/><path d="M12 12h9M18 12v3M15 12v2"/>',

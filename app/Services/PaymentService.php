@@ -115,7 +115,7 @@ class PaymentService
      */
     public function void(Payment $payment, string $reason): Payment
     {
-        return DB::transaction(function () use ($payment, $reason) {
+        $voided = DB::transaction(function () use ($payment, $reason) {
             if ($payment->isVoided()) {
                 throw BusinessRuleException::make('هذه الدفعة ملغاة مسبقاً.');
             }
@@ -151,6 +151,23 @@ class PaymentService
 
             return $payment->fresh();
         });
+
+        /*
+         | Announced after the commit.
+         |
+         | A void moves money and adjusts what a trainee owes, so both the
+         | finance staff and the trainee need to know. It is sent outside the
+         | transaction because a slow provider must not hold locks on the payment,
+         | the package and the cashbox — and a provider timeout must never roll
+         | back a reversal that has already been recorded.
+         */
+        try {
+            $this->notifications->paymentVoided($voided, $reason);
+        } catch (\Throwable $e) {
+            report($e);
+        }
+
+        return $voided;
     }
 
     /** Total still owed by a trainee across every active enrolment. */

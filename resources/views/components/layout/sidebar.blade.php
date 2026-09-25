@@ -16,6 +16,7 @@
                 ['route' => 'admin.calendar.index', 'label' => 'التقويم', 'icon' => 'calendar', 'can' => ['appointments.view']],
                 ['route' => 'admin.sessions.index', 'label' => 'الحصص التدريبية', 'icon' => 'steering', 'can' => ['appointments.view']],
                 ['route' => 'admin.booking-requests.index', 'label' => 'طلبات الحجز', 'icon' => 'inbox', 'can' => ['booking_requests.manage'], 'badge' => 'booking_requests'],
+                ['route' => 'admin.registrations.index', 'label' => 'طلبات الانتساب', 'icon' => 'user-plus', 'can' => ['registrations.view'], 'badge' => 'registrations'],
             ],
         ],
         [
@@ -76,6 +77,12 @@
     $pendingRequests = auth()->user()?->hasPermission('booking_requests.manage')
         ? \App\Models\BookingRequest::query()->visibleTo()->pending()->count()
         : 0;
+
+    // Counted only for someone who may see the queue, so the query is skipped
+    // entirely for a trainer or an accountant.
+    $pendingRegistrations = auth()->user()?->hasPermission('registrations.view')
+        ? \App\Models\RegistrationRequest::open()->count()
+        : 0;
 @endphp
 
 <aside
@@ -129,6 +136,12 @@
                                     @if (($item['badge'] ?? null) === 'booking_requests' && $pendingRequests > 0)
                                         <span class="ms-auto rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">
                                             {{ $pendingRequests }}
+                                        </span>
+                                    @endif
+
+                                    @if (($item['badge'] ?? null) === 'registrations' && $pendingRegistrations > 0)
+                                        <span class="ms-auto rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">
+                                            {{ $pendingRegistrations }}
                                         </span>
                                     @endif
                                 </a>

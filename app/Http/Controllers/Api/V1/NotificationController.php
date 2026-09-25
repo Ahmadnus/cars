@@ -65,8 +65,10 @@ class NotificationController extends ApiController
             // format is not guaranteed, so the column is generous and the
             // uniqueness is enforced on a hash of it.
             'push_token' => ['required', 'string', 'max:512'],
-            'platform' => ['required', 'in:android,ios'],
-            'app' => ['nullable', 'in:trainee,trainer'],
+            // `web` is the dashboard: an administrator gets the same booking and
+            // registration alerts in the browser that staff get on a phone.
+            'platform' => ['required', 'in:android,ios,web'],
+            'app' => ['nullable', 'in:trainee,trainer,dashboard'],
         ], [], [
             'push_token' => 'رمز الجهاز',
             'platform' => 'نوع الجهاز',

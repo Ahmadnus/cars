@@ -28,6 +28,7 @@ class RegistrationService
         protected OtpService $otp,
         protected AuditLogger $audit,
         protected PushService $push,
+        protected NotificationService $notifications,
     ) {
     }
 
@@ -72,6 +73,14 @@ class RegistrationService
         ]);
 
         $this->announce($request, 'created');
+
+        // A broadcast only reaches a dashboard that happens to be open; the
+        // notification reaches whoever may act on it, wherever they are.
+        try {
+            $this->notifications->registrationSubmitted($request);
+        } catch (\Throwable $e) {
+            report($e);
+        }
 
         return $request;
     }

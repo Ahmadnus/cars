@@ -63,15 +63,44 @@
         </span>
     @endif
 
-    <a href="{{ route('admin.notifications.index') }}"
-       class="relative rounded-lg p-2 text-ink-500 hover:bg-ink-100" title="الإشعارات">
-        <x-ui.icon name="bell" class="size-5" />
-        @if ($unread > 0)
-            <span class="absolute top-1 rounded-full bg-rose-500 px-1.5 text-[10px] font-bold text-white ltr:right-1 rtl:left-1">
-                {{ $unread > 99 ? '99+' : $unread }}
-            </span>
-        @endif
-    </a>
+    {{--
+        The bell keeps itself current.
+
+        `count` starts from the server-rendered value so the badge is right on
+        first paint, then the poll and browser push both update it — a
+        receptionist should not have to reload to learn a booking request came in.
+    --}}
+    <div x-data="{
+             count: {{ (int) $unread }},
+             pushState: (window.Notification && Notification.permission) || 'default',
+             async enable() {
+                 const result = await window.enablePush();
+
+                 this.pushState = result.ok
+                     ? 'granted'
+                     : (result.reason === 'denied' ? 'denied' : 'unavailable');
+             },
+         }"
+         x-on:dashboard:notifications.window="count = $event.detail.unread"
+         x-on:dashboard:push.window="window.toast?.($event.detail.title, 'info')"
+         class="flex items-center gap-1">
+
+        <a href="{{ route('admin.notifications.index') }}"
+           class="relative rounded-lg p-2 text-ink-500 hover:bg-ink-100" title="الإشعارات">
+            <x-ui.icon name="bell" class="size-5" />
+            <span x-show="count > 0" x-cloak
+                  class="absolute top-1 rounded-full bg-rose-500 px-1.5 text-[10px] font-bold text-white ltr:right-1 rtl:left-1"
+                  x-text="count > 99 ? '99+' : count"></span>
+        </a>
+
+        {{-- Shown only until permission is settled: a browser will not re-prompt
+             after a denial, so nagging past that point is pointless. --}}
+        <button type="button" x-show="pushState === 'default'" x-cloak @click="enable()"
+                class="rounded-lg p-2 text-ink-400 hover:bg-ink-100 hover:text-brand-600"
+                title="تشغيل إشعارات المتصفح">
+            <x-ui.icon name="bell-plus" class="size-5" />
+        </button>
+    </div>
 
     <div x-data="{ open: false }" class="relative">
         <button type="button" @click="open = !open" @click.outside="open = false"
