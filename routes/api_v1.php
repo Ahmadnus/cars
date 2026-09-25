@@ -2,13 +2,20 @@
 
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\BookingRequestController;
+use App\Http\Controllers\Api\V1\ChatController;
 use App\Http\Controllers\Api\V1\DashboardController;
 use App\Http\Controllers\Api\V1\FinanceController;
 use App\Http\Controllers\Api\V1\MeController;
 use App\Http\Controllers\Api\V1\NotificationController;
+use App\Http\Controllers\Api\V1\PublicRegistrationController;
+use App\Http\Controllers\Api\V1\RegistrationReviewController;
+use App\Http\Controllers\Api\V1\OtpController;
 use App\Http\Controllers\Api\V1\TraineeController;
 use App\Http\Controllers\Api\V1\TrainerController;
+use App\Http\Controllers\Api\V1\TrainerSelfController;
 use App\Http\Controllers\Api\V1\TrainingSessionController;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -26,6 +33,43 @@ use Illuminate\Support\Facades\Route;
 Route::post('auth/login', [AuthController::class, 'login'])
     ->middleware('throttle:10,1')
     ->name('auth.login');
+
+// Phone + passcode, which is how trainees sign in — they have no password.
+// Throttled tighter than the password flow because each request can cost a
+// provider message.
+Route::post('auth/otp/request', [OtpController::class, 'request'])
+    ->middleware('throttle:6,1')
+    ->name('auth.otp.request');
+
+Route::post('auth/otp/verify', [OtpController::class, 'verify'])
+    ->middleware('throttle:10,1')
+    ->name('auth.otp.verify');
+
+/*
+|--------------------------------------------------------------------------
+| Public — no account required
+|--------------------------------------------------------------------------
+|
+| Anyone who installs the Trainee app can apply to join. Throttles are tight
+| because this is the only unauthenticated write surface in the system, and a
+| join request costs a real SMS.
+|
+*/
+
+Route::prefix('public/registrations')->name('public.registrations.')->group(function () {
+    Route::get('options', [PublicRegistrationController::class, 'options'])
+        ->middleware('throttle:30,1')->name('options');
+
+    Route::post('request-code', [PublicRegistrationController::class, 'requestCode'])
+        ->middleware('throttle:5,1')->name('request-code');
+
+    Route::post('/', [PublicRegistrationController::class, 'store'])
+        ->middleware('throttle:5,1')->name('store');
+
+    // The reference is the credential, so guessing is rate limited too.
+    Route::get('{reference}', [PublicRegistrationController::class, 'status'])
+        ->middleware('throttle:20,1')->name('status');
+});
 
 Route::middleware(['auth:sanctum', 'active'])->group(function () {
 
@@ -59,6 +103,17 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
         Route::get('skills', [MeController::class, 'skills'])->name('skills');
         Route::get('packages', [MeController::class, 'packages'])->name('packages');
         Route::get('payments', [MeController::class, 'payments'])->name('payments');
+
+        // Booking screen. `slots` is the trainee-scoped twin of the
+        // center-wide availability endpoint — see MeController::slots().
+        Route::get('slots', [MeController::class, 'slots'])->name('slots');
+        Route::get('trainers', [MeController::class, 'trainers'])->name('trainers');
+        Route::get('booking-requests', [MeController::class, 'bookingRequests'])->name('booking-requests');
+
+        // A trainer's own pay. Same no-id rule, so this needs no
+        // trainer_compensation.view — see TrainerSelfController.
+        Route::get('compensation', [TrainerSelfController::class, 'statement'])->name('compensation');
+        Route::get('compensation/history', [TrainerSelfController::class, 'statements'])->name('compensation.history');
     });
 
     // --------------------------------------------------------------- trainees
@@ -163,11 +218,66 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
             ->middleware('permission:profit.view')->name('profit');
     });
 
+    /*
+     | Socket subscription authorization for mobile clients.
+     |
+     | Laravel's own `broadcasting/auth` sits on the web group and expects a
+     | session cookie. The apps hold a bearer token, so they need the same
+     | callback reached through the API guard — the channel rules in
+     | routes/channels.php are shared, so both doors enforce the same checks.
+     */
+    Route::post('broadcasting/auth', function (Request $request) {
+        return Broadcast::auth($request);
+    })->name('broadcasting.auth');
+
+    /*
+     | Chat.
+     |
+     | No `permission:` middleware: membership of the thread is the
+     | authorization, checked in the controller against the conversation
+     | itself. A staff account is not a participant and is refused here —
+     | oversight lives in the dashboard behind `chat.monitor`.
+     */
+    Route::prefix('chat')->name('chat.')->group(function () {
+        Route::get('conversations', [ChatController::class, 'index'])->name('index');
+        Route::get('my-conversation', [ChatController::class, 'mine'])->name('mine');
+
+        Route::get('conversations/{conversation}/messages', [ChatController::class, 'messages'])
+            ->name('messages');
+
+        Route::post('conversations/{conversation}/messages', [ChatController::class, 'store'])
+            // A burst of messages is normal; a flood is not.
+            ->middleware('throttle:60,1')->name('messages.store');
+
+        Route::post('conversations/{conversation}/read', [ChatController::class, 'markRead'])
+            ->name('read');
+
+        // Attachments are re-authorised on every fetch, so a leaked URL is
+        // useless to anyone outside the conversation.
+        Route::get('attachments/{message}', [ChatController::class, 'attachment'])
+            ->name('attachment');
+    });
+
+    // -------------------------------------------------- registration review
+    Route::prefix('registrations')->name('registrations.')->group(function () {
+        Route::middleware('permission:registrations.view')->group(function () {
+            Route::get('/', [RegistrationReviewController::class, 'index'])->name('index');
+            Route::get('{registrationRequest}', [RegistrationReviewController::class, 'show'])->name('show');
+        });
+
+        Route::middleware('permission:registrations.manage')->group(function () {
+            Route::post('{registrationRequest}/claim', [RegistrationReviewController::class, 'claim'])->name('claim');
+            Route::post('{registrationRequest}/approve', [RegistrationReviewController::class, 'approve'])->name('approve');
+            Route::post('{registrationRequest}/reject', [RegistrationReviewController::class, 'reject'])->name('reject');
+        });
+    });
+
     // ---------------------------------------------------------- notifications
     Route::prefix('notifications')->name('notifications.')->group(function () {
         Route::get('/', [NotificationController::class, 'index'])->name('index');
         Route::post('read-all', [NotificationController::class, 'markAllRead'])->name('read-all');
         Route::post('device', [NotificationController::class, 'registerDevice'])->name('device');
+        Route::delete('device', [NotificationController::class, 'forgetDevice'])->name('device.forget');
         Route::post('{id}/read', [NotificationController::class, 'markRead'])->name('read');
     });
 });

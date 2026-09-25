@@ -64,6 +64,7 @@ class DemoDataSeeder extends Seeder
         $vehicles = $this->vehicles($trainers);
         $this->employees();
         $trainees = $this->trainees($trainers, $packages);
+        $this->traineeLogin($trainees[0]);
 
         $this->sessions($trainees, $trainers, $vehicles);
         $this->payments($trainees);
@@ -75,6 +76,40 @@ class DemoDataSeeder extends Seeder
     }
 
     // ------------------------------------------------------------------
+
+    /**
+     * Give one demo trainee an app login.
+     *
+     * The phone is the one listed in config/otp.php, so the Trainee app can be
+     * signed into with a fixed passcode. Trainees have no usable password —
+     * the column is filled with an unguessable value the passcode flow never
+     * consults, because the password route rejects them outright.
+     */
+    protected function traineeLogin(Trainee $trainee): void
+    {
+        $role = \App\Models\Role::where('name', 'trainee')->first();
+
+        $user = User::updateOrCreate(
+            ['email' => 'trainee@example.com'],
+            [
+                'name' => $trainee->full_name,
+                'phone' => '0790000007',
+                'password' => \Illuminate\Support\Facades\Hash::make(\Illuminate\Support\Str::random(40)),
+                'branch_id' => $trainee->branch_id,
+                'is_super_admin' => false,
+                'can_access_all_branches' => false,
+                'status' => 'active',
+                'locale' => 'ar',
+            ],
+        );
+
+        if ($role) {
+            $user->roles()->sync([$role->id]);
+        }
+
+        $user->branches()->syncWithoutDetaching([$trainee->branch_id]);
+        $trainee->update(['user_id' => $user->id]);
+    }
 
     /**
      * Seed the cashbox with an opening float.

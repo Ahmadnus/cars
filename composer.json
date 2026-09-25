@@ -14,7 +14,8 @@
         "laravel/sanctum": "^4.3",
         "laravel/tinker": "^3.0",
         "mpdf/mpdf": "^8.3",
-        "openspout/openspout": "^5.11"
+        "openspout/openspout": "^5.11",
+        "pusher/pusher-php-server": "^7.3"
     },
     "require-dev": {
         "fakerphp/faker": "^1.23",

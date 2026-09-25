@@ -177,14 +177,24 @@ php artisan tinker    # then create your first admin user
 > **Development only.** These are created by `UserSeeder` and are not seeded in
 > production. Delete them before going live.
 
-| Role | Email | Password |
-|---|---|---|
-| مدير النظام (System Administrator) | `admin@example.com` | `password123` |
-| مدير المركز (Center Manager) | `manager@example.com` | `password123` |
-| محاسب (Accountant) | `accountant@example.com` | `password123` |
-| موظف استقبال (Receptionist) | `reception@example.com` | `password123` |
-| مشرف تدريب (Training Supervisor) | `supervisor@example.com` | `password123` |
-| مدرب (Trainer) | `trainer@example.com` | `password123` |
+Each role also has a phone number with a **fixed passcode**, so the apps can be
+signed into without an SMS provider. The passcodes come from
+`config/otp.php` and are active only while `OTP_FIXED_CODES` is on, which
+defaults to off in production.
+
+| Role | Email | Password | Phone | Passcode |
+|---|---|---|---|---|
+| مدير النظام (System Administrator) | `admin@example.com` | `password123` | `0790000001` | `111111` |
+| مدير المركز (Center Manager) | `manager@example.com` | `password123` | `0790000002` | `222222` |
+| محاسب (Accountant) | `accountant@example.com` | `password123` | `0790000003` | `333333` |
+| موظف استقبال (Receptionist) | `reception@example.com` | `password123` | `0790000004` | `444444` |
+| مشرف تدريب (Training Supervisor) | `supervisor@example.com` | `password123` | `0790000005` | `555555` |
+| مدرب (Trainer) | `trainer@example.com` | `password123` | `0790000006` | `666666` |
+| متدرب (Trainee) | `trainee@example.com` | — passcode only | `0790000007` | `777777` |
+
+The trainee account is created by `DemoDataSeeder` and linked to the first demo
+trainee file. It has **no usable password**: the password route refuses trainees
+outright, so the passcode is its only way in.
 
 Sign in as the **receptionist** to see the permission model working: no profit,
 no salaries, no cashbox, no trainer compensation — those blocks are not
@@ -388,6 +398,8 @@ SQL and internal details are never exposed.
 
 ### Authentication
 
+Staff sign in with a password:
+
 ```http
 POST /api/v1/auth/login
 Content-Type: application/json
@@ -395,8 +407,25 @@ Content-Type: application/json
 { "email": "trainer@example.com", "password": "password123", "device_name": "Pixel 8" }
 ```
 
-Returns a bearer token plus the user and their effective permissions. Send it as
-`Authorization: Bearer <token>` on every subsequent request.
+Trainees sign in with a phone number and a one-time passcode — the password
+route refuses them, so there is only ever one door into a trainee account:
+
+```http
+POST /api/v1/auth/otp/request
+{ "phone": "0790000007" }
+
+POST /api/v1/auth/otp/verify
+{ "phone": "0790000007", "code": "777777", "device_name": "iPhone 15" }
+```
+
+`otp/request` answers identically for a registered and an unregistered number,
+so the endpoint cannot be used to find out who is a customer. The passcode is
+stored hashed, retires the previous one, expires after `OTP_TTL_MINUTES`, and is
+burnt after `OTP_MAX_ATTEMPTS` wrong guesses. Outside production the response
+also carries `debug_code` so the app can be driven without an SMS provider.
+
+Both routes return a bearer token plus the user and their effective permissions.
+Send it as `Authorization: Bearer <token>` on every subsequent request.
 
 Token abilities mirror the user's permissions, so a stolen trainer token cannot
 reach an accountant's endpoints. Logging in again from the same `device_name`

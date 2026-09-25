@@ -2,11 +2,13 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Http\Resources\BookingRequestResource;
 use App\Http\Resources\PaymentResource;
 use App\Http\Resources\SkillEvaluationResource;
 use App\Http\Resources\TraineePackageResource;
 use App\Http\Resources\TrainingSessionResource;
 use App\Models\Trainee;
+use App\Services\AppointmentService;
 use App\Services\PaymentService;
 use App\Services\TraineeBalanceService;
 use App\Services\TrainingSessionService;
@@ -150,6 +152,102 @@ class MeController extends ApiController
             'outstanding' => round($this->payments->outstandingForTrainee($trainee), 2),
             'paid' => round((float) $trainee->payments()->completed()->sum('amount'), 2),
         ]);
+    }
+
+    /**
+     * Free times the trainee could ask for, for the booking screen.
+     *
+     * The center-wide slots endpoint takes a trainer id and needs
+     * `appointments.view`, which a trainee must never hold. This one reads the
+     * trainee's own trainer by default and will only accept another trainer
+     * who works at the trainee's own branch — so it cannot be used to map a
+     * different branch's schedule.
+     */
+    public function slots(Request $request, AppointmentService $appointments): JsonResponse
+    {
+        $trainee = $this->trainee($request);
+
+        $data = $request->validate([
+            'date' => ['required', 'date'],
+            'trainer_id' => ['nullable', 'string'],
+        ], [], ['date' => 'التاريخ', 'trainer_id' => 'المدرب']);
+
+        $trainer = $data['trainer_id'] ?? null
+            ? $this->branchTrainers($trainee)->firstWhere('uuid', $data['trainer_id'])
+            : $trainee->trainer;
+
+        if (! $trainer) {
+            return $this->failed('لم يتم تحديد مدرب. تواصل مع المركز.', status: 404);
+        }
+
+        $date = \Illuminate\Support\Carbon::parse($data['date']);
+
+        // Booking into the past is never a real request, and letting it
+        // through would put an unactionable row in the admin's queue.
+        if ($date->isBefore(now()->startOfDay())) {
+            return $this->ok([
+                'trainer' => ['id' => $trainer->uuid, 'full_name' => $trainer->full_name],
+                'date' => $date->toDateString(),
+                'slots' => [],
+            ]);
+        }
+
+        $duration = $trainee->activePackage()?->package?->lesson_duration_minutes;
+
+        return $this->ok([
+            'trainer' => ['id' => $trainer->uuid, 'full_name' => $trainer->full_name],
+            'date' => $date->toDateString(),
+            'slots' => $appointments->availableSlots($trainer, $date, $duration),
+        ]);
+    }
+
+    /** Trainers the trainee may name as a preference on a request. */
+    public function trainers(Request $request): JsonResponse
+    {
+        $trainee = $this->trainee($request);
+
+        return $this->ok(
+            $this->branchTrainers($trainee)
+                ->map(fn ($trainer) => [
+                    'id' => $trainer->uuid,
+                    'full_name' => $trainer->full_name,
+                    'is_mine' => $trainer->id === $trainee->trainer_id,
+                ])
+                ->values(),
+        );
+    }
+
+    /**
+     * The trainee's own open requests, so the app can show what is still
+     * waiting on the office rather than letting them ask twice.
+     */
+    public function bookingRequests(Request $request): JsonResponse
+    {
+        $trainee = $this->trainee($request);
+
+        $requests = $trainee->bookingRequests()
+            ->with(['trainingSession:id,uuid,scheduled_date,start_time,end_time,status', 'preferredTrainer:id,uuid,full_name'])
+            ->orderByDesc('created_at')
+            ->paginate($this->perPage());
+
+        return $this->paginated($requests, BookingRequestResource::class, meta: [
+            'pending' => $trainee->bookingRequests()->where('status', 'pending')->count(),
+        ]);
+    }
+
+    /**
+     * Active trainers at the trainee's branch. Deliberately name-only: this is
+     * a picker, not a staff directory.
+     *
+     * @return \Illuminate\Support\Collection<int, \App\Models\Trainer>
+     */
+    protected function branchTrainers(Trainee $trainee): \Illuminate\Support\Collection
+    {
+        return \App\Models\Trainer::query()
+            ->where('branch_id', $trainee->branch_id)
+            ->where('status', 'active')
+            ->orderBy('full_name')
+            ->get(['id', 'uuid', 'full_name', 'branch_id', 'work_start_time', 'work_end_time']);
     }
 
     /**

@@ -62,48 +62,18 @@ class TrainerCompensationService
                 );
             }
 
-            $stats = $this->lessonStats($trainer, $start, $end);
-
-            $baseSalary = $rule->usesSalary() ? round((float) $rule->base_salary, 2) : 0.0;
-
-            $lessonEarnings = $rule->usesPerLesson()
-                ? round((float) $rule->per_lesson_rate * $stats['lessons'], 2)
-                : 0.0;
-
-            $percentageEarnings = $rule->usesPercentage()
-                ? round($stats['revenue'] * (float) $rule->revenue_percentage / 100, 2)
-                : 0.0;
-
-            $bonuses = round((float) ($options['bonuses'] ?? $record?->bonuses ?? 0), 2);
-            $deductions = round((float) ($options['deductions'] ?? $record?->deductions ?? 0), 2);
-
-            if ($bonuses < 0 || $deductions < 0) {
-                throw BusinessRuleException::make('المكافآت والاستقطاعات لا يمكن أن تكون بقيم سالبة.');
-            }
-
-            $gross = round($baseSalary + $lessonEarnings + $percentageEarnings + $bonuses, 2);
-            $net = round($gross - $deductions, 2);
-
-            if ($net < 0) {
-                throw BusinessRuleException::make('صافي أجر المدرب لا يمكن أن يكون سالباً.');
-            }
+            $figures = $this->compute(
+                $rule,
+                $this->lessonStats($trainer, $start, $end),
+                (float) ($options['bonuses'] ?? $record?->bonuses ?? 0),
+                (float) ($options['deductions'] ?? $record?->deductions ?? 0),
+            );
 
             $record = TrainerCompensationRecord::updateOrCreate(
                 ['trainer_id' => $trainer->id, 'period' => $period],
-                [
+                $figures + [
                     'branch_id' => $trainer->branch_id,
                     'trainer_compensation_rule_id' => $rule->id,
-                    'model' => $rule->model,
-                    'lessons_count' => $stats['lessons'],
-                    'training_minutes' => $stats['minutes'],
-                    'attributed_revenue' => $stats['revenue'],
-                    'base_salary' => $baseSalary,
-                    'lesson_earnings' => $lessonEarnings,
-                    'percentage_earnings' => $percentageEarnings,
-                    'bonuses' => $bonuses,
-                    'deductions' => $deductions,
-                    'gross_amount' => $gross,
-                    'net_amount' => $net,
                     'status' => 'draft',
                     'notes' => $options['notes'] ?? $record?->notes,
                     'created_by' => auth()->id(),
@@ -284,6 +254,63 @@ class TrainerCompensationService
      *
      * @return array{lessons: int, minutes: int, revenue: float}
      */
+    /**
+     * Apply one compensation rule to one month's lesson figures.
+     *
+     * Pure: it writes nothing and reads nothing beyond its arguments, which is
+     * what lets the trainer's own app show a live running total for the month
+     * in progress without creating a draft statement the office did not ask
+     * for. `calculate()` persists exactly what this returns, so the preview a
+     * trainer sees and the statement the office issues can never disagree.
+     *
+     * @param  array{lessons:int, minutes:int, revenue:float}  $stats
+     * @return array<string, mixed> Columns of trainer_compensation_records
+     */
+    public function compute(
+        TrainerCompensationRule $rule,
+        array $stats,
+        float $bonuses = 0,
+        float $deductions = 0,
+    ): array {
+        $bonuses = round($bonuses, 2);
+        $deductions = round($deductions, 2);
+
+        if ($bonuses < 0 || $deductions < 0) {
+            throw BusinessRuleException::make('المكافآت والاستقطاعات لا يمكن أن تكون بقيم سالبة.');
+        }
+
+        $baseSalary = $rule->usesSalary() ? round((float) $rule->base_salary, 2) : 0.0;
+
+        $lessonEarnings = $rule->usesPerLesson()
+            ? round((float) $rule->per_lesson_rate * $stats['lessons'], 2)
+            : 0.0;
+
+        $percentageEarnings = $rule->usesPercentage()
+            ? round($stats['revenue'] * (float) $rule->revenue_percentage / 100, 2)
+            : 0.0;
+
+        $gross = round($baseSalary + $lessonEarnings + $percentageEarnings + $bonuses, 2);
+        $net = round($gross - $deductions, 2);
+
+        if ($net < 0) {
+            throw BusinessRuleException::make('صافي أجر المدرب لا يمكن أن يكون سالباً.');
+        }
+
+        return [
+            'model' => $rule->model,
+            'lessons_count' => $stats['lessons'],
+            'training_minutes' => $stats['minutes'],
+            'attributed_revenue' => $stats['revenue'],
+            'base_salary' => $baseSalary,
+            'lesson_earnings' => $lessonEarnings,
+            'percentage_earnings' => $percentageEarnings,
+            'bonuses' => $bonuses,
+            'deductions' => $deductions,
+            'gross_amount' => $gross,
+            'net_amount' => $net,
+        ];
+    }
+
     public function lessonStats(Trainer $trainer, Carbon $start, Carbon $end): array
     {
         $row = TrainingSession::query()

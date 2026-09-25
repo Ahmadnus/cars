@@ -47,4 +47,5 @@ Schedule::command(VerifyFinancialIntegrity::class)
 // Housekeeping.
 Schedule::command('auth:clear-resets')->daily();
 Schedule::command('sanctum:prune-expired --hours=24')->daily();
+Schedule::command('otp:prune')->daily();
 Schedule::command('queue:prune-batches --hours=48')->daily();

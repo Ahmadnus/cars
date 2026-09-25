@@ -69,6 +69,17 @@ class AuthController extends ApiController
             return $this->failed('هذا الحساب غير مفعّل.', status: 403);
         }
 
+        /*
+         | Trainees may sign in with either a password or a passcode.
+         |
+         | Passcode-only would be the stronger design — one door per account —
+         | but the Trainee app has no passcode screen yet, and the credentials
+         | already issued to trainees are passwords. Closing this door before
+         | that screen exists would lock every existing trainee out.
+         |
+         | When the app gains the passcode flow, restore the refusal here.
+         */
+
         RateLimiter::clear($key);
 
         // One token per device name: logging in again from the same device

@@ -26,6 +26,22 @@ class Permissions
                 'portal.view' => ['الدخول إلى بوابة المتدرب', false],
             ],
         ],
+        'registrations' => [
+            'label' => 'طلبات الانتساب',
+            'permissions' => [
+                'registrations.view' => ['عرض طلبات الانتساب', false],
+                'registrations.manage' => ['قبول ورفض طلبات الانتساب', false],
+            ],
+        ],
+        'chat' => [
+            'label' => 'المحادثات',
+            'permissions' => [
+                // Staff oversight of trainer-trainee threads. The participants
+                // themselves need no permission: the conversation is theirs.
+                'chat.monitor' => ['الاطلاع على محادثات المدربين والمتدربين', true],
+                'chat.moderate' => ['إيقاف المحادثات', false],
+            ],
+        ],
         'dashboard' => [
             'label' => 'لوحة التحكم',
             'permissions' => [
@@ -213,6 +229,8 @@ class Permissions
             'dashboard.view', 'dashboard.financials',
             'trainees.view', 'trainees.create', 'trainees.update', 'trainees.delete',
             'trainees.documents', 'trainees.financial',
+            'registrations.view', 'registrations.manage',
+            'chat.monitor', 'chat.moderate',
             'trainers.view', 'trainers.create', 'trainers.update', 'trainers.delete',
             'appointments.view', 'appointments.create', 'appointments.update',
             'appointments.cancel', 'appointments.complete', 'booking_requests.manage',
@@ -233,6 +251,7 @@ class Permissions
         'receptionist' => [
             'dashboard.view',
             'trainees.view', 'trainees.create', 'trainees.update', 'trainees.documents',
+            'registrations.view', 'registrations.manage',
             'trainers.view',
             'appointments.view', 'appointments.create', 'appointments.update',
             'appointments.cancel', 'booking_requests.manage',
@@ -262,6 +281,7 @@ class Permissions
         'training_supervisor' => [
             'dashboard.view',
             'trainees.view', 'trainees.create', 'trainees.update', 'trainees.documents',
+            'registrations.view',
             'trainers.view', 'trainers.create', 'trainers.update',
             'appointments.view', 'appointments.create', 'appointments.update',
             'appointments.cancel', 'appointments.complete', 'booking_requests.manage',

@@ -24,10 +24,14 @@ class UserSeeder extends Seeder
         $main = Branch::where('code', 'AMM')->firstOrFail();
         $second = Branch::where('code', 'ZRQ')->first();
 
+        // Phones match config/otp.php `fixed_codes`, so every role can be
+        // signed into from the apps with a passcode that never changes and
+        // never touches an SMS provider.
         $accounts = [
             [
                 'name' => 'مدير النظام',
                 'email' => 'admin@example.com',
+                'phone' => '0790000001',
                 'role' => 'system_admin',
                 'super' => true,
                 'all_branches' => true,
@@ -35,6 +39,7 @@ class UserSeeder extends Seeder
             [
                 'name' => 'خالد المومني',
                 'email' => 'manager@example.com',
+                'phone' => '0790000002',
                 'role' => 'center_manager',
                 'super' => false,
                 'all_branches' => true,
@@ -42,6 +47,7 @@ class UserSeeder extends Seeder
             [
                 'name' => 'ليلى العبادي',
                 'email' => 'accountant@example.com',
+                'phone' => '0790000003',
                 'role' => 'accountant',
                 'super' => false,
                 'all_branches' => true,
@@ -49,6 +55,7 @@ class UserSeeder extends Seeder
             [
                 'name' => 'رنا الشوابكة',
                 'email' => 'reception@example.com',
+                'phone' => '0790000004',
                 'role' => 'receptionist',
                 'super' => false,
                 'all_branches' => false,
@@ -56,6 +63,7 @@ class UserSeeder extends Seeder
             [
                 'name' => 'سامي الحديد',
                 'email' => 'supervisor@example.com',
+                'phone' => '0790000005',
                 'role' => 'training_supervisor',
                 'super' => false,
                 'all_branches' => false,
@@ -63,6 +71,7 @@ class UserSeeder extends Seeder
             [
                 'name' => 'عمر الزعبي',
                 'email' => 'trainer@example.com',
+                'phone' => '0790000006',
                 'role' => 'trainer',
                 'super' => false,
                 'all_branches' => false,
@@ -74,6 +83,7 @@ class UserSeeder extends Seeder
                 ['email' => $account['email']],
                 [
                     'name' => $account['name'],
+                    'phone' => $account['phone'],
                     'password' => Hash::make(self::DEMO_PASSWORD),
                     'branch_id' => $main->id,
                     'is_super_admin' => $account['super'],

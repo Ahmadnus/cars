@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Resources\NotificationResource;
+use App\Models\DeviceToken;
+use App\Services\PushService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -58,11 +60,47 @@ class NotificationController extends ApiController
      */
     public function registerDevice(Request $request): JsonResponse
     {
-        $request->validate([
-            'push_token' => ['required', 'string', 'max:255'],
+        $data = $request->validate([
+            // Provider tokens are long — FCM's run past 160 characters and the
+            // format is not guaranteed, so the column is generous and the
+            // uniqueness is enforced on a hash of it.
+            'push_token' => ['required', 'string', 'max:512'],
             'platform' => ['required', 'in:android,ios'],
+            'app' => ['nullable', 'in:trainee,trainer'],
+        ], [], [
+            'push_token' => 'رمز الجهاز',
+            'platform' => 'نوع الجهاز',
         ]);
 
-        return $this->ok(message: 'تم استلام رمز الجهاز. سيتم تفعيل الإشعارات الفورية عند ربط مزوّد الخدمة.');
+        DeviceToken::register(
+            $request->user(),
+            $data['push_token'],
+            $data['platform'],
+            $data['app'] ?? 'trainee',
+        );
+
+        return $this->ok(
+            ['push_enabled' => app(PushService::class)->isEnabled()],
+            'تم تسجيل الجهاز للإشعارات.',
+        );
+    }
+
+    /**
+     * Forget this device.
+     *
+     * Called on sign-out: leaving the token behind would send the next person's
+     * messages to a phone that is no longer signed in.
+     */
+    public function forgetDevice(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'push_token' => ['required', 'string', 'max:512'],
+        ], [], ['push_token' => 'رمز الجهاز']);
+
+        DeviceToken::where('token_hash', hash('sha256', $data['push_token']))
+            ->where('user_id', $request->user()->id)
+            ->delete();
+
+        return $this->ok(message: 'تم إلغاء تسجيل الجهاز.');
     }
 }
