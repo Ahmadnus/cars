@@ -24,6 +24,36 @@ class NotificationController extends Controller
         ]);
     }
 
+    /**
+     * The bell's feed: an unread count and the newest few.
+     *
+     * A session-authenticated web route rather than the API one. The dashboard
+     * has a session cookie, and reaching the API with it depends on Sanctum's
+     * stateful-domain configuration matching the host exactly — a setting that
+     * silently returns 401 when it does not. The bell is not worth that coupling.
+     */
+    public function feed(Request $request): \Illuminate\Http\JsonResponse
+    {
+        $user = $request->user();
+
+        return response()->json([
+            'unread' => $user->unreadNotifications()->count(),
+            'items' => $user->notifications()
+                ->latest()
+                ->limit(5)
+                ->get()
+                ->map(fn ($notification) => [
+                    'id' => $notification->id,
+                    'title' => $notification->data['title'] ?? '',
+                    'body' => $notification->data['body'] ?? '',
+                    'level' => $notification->data['level'] ?? 'info',
+                    'url' => $notification->data['url'] ?? null,
+                    'read' => $notification->read_at !== null,
+                    'at' => $notification->created_at?->toIso8601String(),
+                ]),
+        ]);
+    }
+
     public function markRead(Request $request, string $notification): RedirectResponse
     {
         $record = $request->user()->notifications()->whereKey($notification)->firstOrFail();

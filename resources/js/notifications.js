@@ -14,7 +14,16 @@
  * render regardless of how the news arrived.
  */
 
-const ENDPOINT = '/api/v1/notifications';
+/*
+ * The bell reads a session-authenticated web route, not the API.
+ *
+ * The dashboard carries a session cookie; reaching `/api/v1` with it depends on
+ * Sanctum's stateful-domain list matching the host, which returns a silent 401
+ * when it does not. Device registration still goes to the API, because that is
+ * the endpoint the mobile apps share and it is CSRF-protected the same way.
+ */
+const FEED = '/notifications/feed';
+const DEVICE_ENDPOINT = '/api/v1/notifications/device';
 const POLL_MS = 15000;
 
 /** Read the config the Blade layout embedded, or null when push is not set up. */
@@ -47,7 +56,7 @@ function csrf() {
  */
 async function registerToken(token) {
     try {
-        await fetch(`${ENDPOINT}/device`, {
+        await fetch(DEVICE_ENDPOINT, {
             method: 'POST',
             credentials: 'same-origin',
             headers: {
@@ -148,7 +157,7 @@ export async function enablePush() {
 /** Current unread count and the newest few, for the bell. */
 async function refresh() {
     try {
-        const response = await fetch(`${ENDPOINT}?per_page=5`, {
+        const response = await fetch(FEED, {
             credentials: 'same-origin',
             headers: { Accept: 'application/json' },
         });
@@ -162,8 +171,8 @@ async function refresh() {
         window.dispatchEvent(
             new CustomEvent('dashboard:notifications', {
                 detail: {
-                    unread: payload.meta?.unread_count ?? 0,
-                    items: payload.data ?? [],
+                    unread: payload.unread ?? 0,
+                    items: payload.items ?? [],
                 },
             }),
         );

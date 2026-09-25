@@ -136,6 +136,11 @@ Route::middleware(['auth', 'active'])->name('admin.')->group(function () {
      | supervisor should see what is coming without being able to let a stranger
      | into the training records.
      */
+    // Polled by the bell. Session-authenticated, so it does not depend on
+    // Sanctum's stateful-domain list being right.
+    Route::get('/notifications/feed', [NotificationController::class, 'feed'])
+        ->name('notifications.feed');
+
     Route::prefix('registrations')->name('registrations.')->group(function () {
         Route::get('/', [RegistrationRequestController::class, 'index'])
             ->middleware('permission:registrations.view')->name('index');

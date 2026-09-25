@@ -44,6 +44,24 @@ Schedule::command(VerifyFinancialIntegrity::class)
     ->withoutOverlapping()
     ->emailOutputOnFailure(config('mail.admin_address') ?: null);
 
+/*
+ | Drain the queue.
+ |
+ | Notifications implement ShouldQueue, so every one of them lands in the jobs
+ | table and waits for a worker. The application runs on shared hosting with no
+ | supervisor and no way to keep a daemon alive, so a long-running `queue:work`
+ | is not available — and without this the queue simply grows. It did: 235
+ | notifications sat unsent because nothing was consuming them.
+ |
+ | `--stop-when-empty` makes each run finite, so the minute's cron finishes
+ | rather than lingering, and `withoutOverlapping` keeps two runs from racing.
+ | `--tries=3` gives a dead SMS provider a couple of chances before the job is
+ | parked in failed_jobs where it can be inspected.
+ */
+Schedule::command('queue:work --stop-when-empty --tries=3 --max-time=55')
+    ->everyMinute()
+    ->withoutOverlapping();
+
 // Housekeeping.
 Schedule::command('auth:clear-resets')->daily();
 Schedule::command('sanctum:prune-expired --hours=24')->daily();
