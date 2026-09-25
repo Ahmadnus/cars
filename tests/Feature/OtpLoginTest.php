@@ -180,6 +180,74 @@ class OtpLoginTest extends TestCase
         ])->assertOk();
     }
 
+    /**
+     * The guard that makes fixed passcodes safe to ship.
+     *
+     * A passcode that never changes is a standing credential. It is acceptable
+     * on a demo trainee; on an account that can reach money, salaries or private
+     * conversations it is a permanent way in. The service refuses it there no
+     * matter how the environment is configured — which is what lets the feature
+     * exist at all.
+     */
+    public function test_a_fixed_passcode_is_refused_for_a_privileged_account(): void
+    {
+        $manager = $this->userWithRole('center_manager', ['phone' => '0796000001']);
+
+        config()->set('otp.enable_fixed_codes', true);
+        config()->set('otp.fixed_codes', ['0796000001' => '424242']);
+        config()->set('otp.expose_code', false);
+
+        $this->postJson('/api/v1/auth/otp/request', ['phone' => '0796000001'])->assertOk();
+
+        // The demo code does not work — a rejected passcode is a 401.
+        $this->postJson('/api/v1/auth/otp/verify', [
+            'phone' => '0796000001',
+            'code' => '424242',
+            'device_name' => 'iphone',
+        ])->assertStatus(401);
+
+        // …and a real random code was issued instead, so the account is still
+        // reachable by its owner through the normal flow.
+        $this->assertDatabaseHas('otp_codes', ['phone' => '0796000001']);
+        $this->assertNotNull($manager->fresh());
+    }
+
+    /** A super admin is refused even without any named permission. */
+    public function test_a_fixed_passcode_is_refused_for_a_super_admin(): void
+    {
+        $this->admin()->forceFill(['phone' => '0796000002'])->save();
+
+        config()->set('otp.enable_fixed_codes', true);
+        config()->set('otp.fixed_codes', ['0796000002' => '111111']);
+        config()->set('otp.expose_code', false);
+
+        $this->postJson('/api/v1/auth/otp/request', ['phone' => '0796000002'])->assertOk();
+
+        $this->postJson('/api/v1/auth/otp/verify', [
+            'phone' => '0796000002',
+            'code' => '111111',
+            'device_name' => 'iphone',
+        ])->assertStatus(401);
+    }
+
+    /** A trainer holds no sensitive permission, so a demo code is allowed. */
+    public function test_a_fixed_passcode_works_for_a_demo_trainer(): void
+    {
+        $this->userWithRole('trainer', ['phone' => '0796000003']);
+
+        config()->set('otp.enable_fixed_codes', true);
+        config()->set('otp.fixed_codes', ['0796000003' => '666666']);
+        config()->set('otp.expose_code', false);
+
+        $this->postJson('/api/v1/auth/otp/request', ['phone' => '0796000003'])->assertOk();
+
+        $this->postJson('/api/v1/auth/otp/verify', [
+            'phone' => '0796000003',
+            'code' => '666666',
+            'device_name' => 'android',
+        ])->assertOk();
+    }
+
     public function test_a_disabled_account_cannot_sign_in(): void
     {
         $code = $this->requestCode();

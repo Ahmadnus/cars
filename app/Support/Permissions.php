@@ -210,6 +210,30 @@ class Permissions
         return $rows;
     }
 
+    /**
+     * Every permission the catalogue flags as sensitive — money, salaries,
+     * personal documents, private conversations.
+     *
+     * Exists so a caller can ask "is this account privileged?" without
+     * hard-coding a list that would drift from the catalogue above.
+     *
+     * @return array<int, string>
+     */
+    public static function sensitive(): array
+    {
+        $names = [];
+
+        foreach (self::CATALOG as $group) {
+            foreach ($group['permissions'] as $name => [$label, $isSensitive]) {
+                if ($isSensitive) {
+                    $names[] = $name;
+                }
+            }
+        }
+
+        return $names;
+    }
+
     public static function groupLabel(string $group): string
     {
         return self::CATALOG[$group]['label'] ?? $group;

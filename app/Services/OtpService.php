@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\OtpCode;
 use App\Models\User;
+use App\Support\Permissions;
 use App\Services\Notifications\ChannelGateway;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
@@ -197,16 +198,55 @@ class OtpService
         return $digits;
     }
 
-    /** The fixed demo passcode for this number, when one is configured. */
+    /**
+     * The fixed demo passcode for this number, when one is configured.
+     *
+     * Refused for any account holding a sensitive permission. A passcode that
+     * never changes is a standing credential, and a standing credential must not
+     * reach money, salaries, personal documents or private conversations — so a
+     * demo trainee or trainer may use one, and an administrator may not, however
+     * the environment is configured.
+     */
     public function fixedCodeFor(string $phone): ?string
     {
         if (! config('otp.enable_fixed_codes')) {
             return null;
         }
 
-        $map = (array) config('otp.fixed_codes', []);
+        $phone = $this->normalisePhone($phone);
+        $code = ((array) config('otp.fixed_codes', []))[$phone] ?? null;
 
-        return $map[$this->normalisePhone($phone)] ?? null;
+        if ($code === null) {
+            return null;
+        }
+
+        $user = $this->userFor($phone);
+
+        if ($user && $this->isPrivileged($user)) {
+            Log::warning('[otp] رُفض رمز ثابت لحساب يملك صلاحيات حسّاسة.', [
+                'user_id' => $user->id,
+            ]);
+
+            return null;
+        }
+
+        return $code;
+    }
+
+    /** Whether this account can reach anything the catalogue marks sensitive. */
+    protected function isPrivileged(User $user): bool
+    {
+        if ($user->isSuperAdmin()) {
+            return true;
+        }
+
+        foreach (Permissions::sensitive() as $permission) {
+            if ($user->hasPermission($permission)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /** Seconds the caller must still wait before another code may be issued. */

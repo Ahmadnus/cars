@@ -57,19 +57,33 @@ return [
     |
     */
 
-    'enable_fixed_codes' => (bool) env('OTP_FIXED_CODES', env('APP_ENV', 'production') !== 'production'),
+    // Two separate variables on purpose: one switch, one map. They shared a
+    // name once, so setting the map silently flipped the switch.
+    'enable_fixed_codes' => (bool) env('OTP_ENABLE_FIXED_CODES', env('APP_ENV', 'production') !== 'production'),
 
     /*
-     | Deliberately empty.
+     | Demo passcodes, read from the environment.
      |
-     | This map used to carry one passcode per role — 111111 for the system
-     | administrator among them. It was gated to non-production, but a login
-     | bypass one environment variable away from a live system is not a risk
-     | worth keeping for the convenience of demo sign-ins. Development uses
-     | `OTP_EXPOSE_CODE=true` instead, which returns the real generated code in
-     | the response without creating a standing credential.
+     | Format: OTP_FIXED_CODES="0790000007:777777,0790000006:666666"
+     |
+     | Nothing is hard-coded here on purpose: a passcode committed to the
+     | repository is a credential in version control forever. Two further guards
+     | live in OtpService — the map is ignored unless `enable_fixed_codes` is on,
+     | and a fixed code is refused outright for an account holding any sensitive
+     | permission, so it can open a demo trainee or trainer and never an
+     | administrator.
      */
-    'fixed_codes' => [
-        //
-    ],
+    'fixed_codes' => array_reduce(
+        array_filter(explode(',', (string) env('OTP_FIXED_CODES', ''))),
+        function (array $carry, string $pair): array {
+            [$phone, $code] = array_pad(explode(':', trim($pair), 2), 2, null);
+
+            if ($phone && $code) {
+                $carry[trim($phone)] = trim($code);
+            }
+
+            return $carry;
+        },
+        [],
+    ),
 ];
