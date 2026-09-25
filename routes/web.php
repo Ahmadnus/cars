@@ -140,6 +140,10 @@ Route::middleware(['auth', 'active'])->name('admin.')->group(function () {
         Route::get('/', [RegistrationRequestController::class, 'index'])
             ->middleware('permission:registrations.view')->name('index');
 
+        // Polled by the queue page to notice an arrival without a reload.
+        Route::get('count', [RegistrationRequestController::class, 'count'])
+            ->middleware('permission:registrations.view')->name('count');
+
         Route::middleware('permission:registrations.manage')->group(function () {
             Route::post('/{registrationRequest}/approve', [RegistrationRequestController::class, 'approve'])->name('approve');
             Route::post('/{registrationRequest}/reject', [RegistrationRequestController::class, 'reject'])->name('reject');

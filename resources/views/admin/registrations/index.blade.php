@@ -13,6 +13,60 @@
         description="الطلبات الواردة من تطبيق المتدربين. لا يُنشأ ملف متدرب إلا بعد القبول."
     />
 
+    {{--
+        The queue watches for new arrivals.
+
+        A request is raised from a phone by someone standing at the counter or
+        sitting at home; a receptionist should not have to reload to find it. The
+        check asks only for a count, so it costs a few hundred bytes every ten
+        seconds — and it only reloads the page when that count actually grows,
+        which is what keeps a half-typed rejection reason from being wiped.
+    --}}
+    <div x-data="{
+             known: {{ (int) $openCount }},
+             arrived: 0,
+             timer: null,
+             start() {
+                 this.stop();
+                 this.timer = setInterval(() => this.check(), 10000);
+             },
+             stop() {
+                 if (this.timer) { clearInterval(this.timer); this.timer = null; }
+             },
+             async check() {
+                 try {
+                     const response = await fetch(@js(route('admin.registrations.count')), {
+                         headers: { Accept: 'application/json' },
+                         credentials: 'same-origin',
+                     });
+
+                     if (!response.ok) return;
+
+                     const payload = await response.json();
+                     const open = payload.open ?? this.known;
+
+                     if (open > this.known) {
+                         this.arrived = open - this.known;
+                         window.toast?.('وصل طلب انتساب جديد', 'info');
+                     }
+                 } catch (error) {
+                     /* Offline for a moment; the next tick covers it. */
+                 }
+             },
+         }"
+         x-init="start()"
+         x-on:visibilitychange.document="document.hidden ? stop() : (check(), start())"
+         class="mb-4">
+
+        <div x-show="arrived > 0" x-cloak
+             class="flex items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+            <p class="text-sm font-medium text-amber-800">
+                وصل <span x-text="arrived"></span> طلب جديد.
+            </p>
+            <x-ui.button size="sm" @click="window.location.reload()">عرض الطلبات</x-ui.button>
+        </div>
+    </div>
+
     <x-ui.filters :action="route('admin.registrations.index')" :collapsible="false">
         <x-slot:fields>
             <x-form.select name="status" label="الحالة" :options="$statuses" :selected="request('status')" placeholder="المعلّقة فقط" />

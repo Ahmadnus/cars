@@ -62,6 +62,18 @@ class RegistrationRequestController extends Controller
         ]);
     }
 
+    /**
+     * How many requests are still open.
+     *
+     * Deliberately just a number: the queue page polls this every ten seconds to
+     * notice an arrival, and returning the rows would mean sending the whole
+     * visible list — with the applicants' personal details — on every tick.
+     */
+    public function count(): \Illuminate\Http\JsonResponse
+    {
+        return response()->json(['open' => RegistrationRequest::open()->count()]);
+    }
+
     public function approve(Request $request, RegistrationRequest $registrationRequest): RedirectResponse
     {
         $data = $request->validate([
