@@ -68,12 +68,43 @@ class ChatController extends ApiController
 
         $request->validate([
             'before' => ['nullable', 'string'],
+            'after' => ['nullable', 'string'],
             'limit' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
 
         $limit = (int) $request->input('limit', 30);
 
         $query = $conversation->messages()->with('sender:id,name')->orderByDesc('id');
+
+        /*
+         | `after` is the polling path: it asks only for what arrived since the
+         | newest message the client already holds. Without it a client checking
+         | every couple of seconds would re-download the whole first page each
+         | time — and the app does poll that often, because a push notification
+         | reaches the phone well before an idle screen would refresh itself.
+         |
+         | It is deliberately exclusive of the other two knobs: paging backwards
+         | through history and asking for the newest tail are different questions.
+         */
+        if ($after = $request->input('after')) {
+            $cursor = Message::where('uuid', $after)->value('id');
+
+            if ($cursor) {
+                $fresh = $conversation->messages()
+                    ->with('sender:id,name')
+                    ->where('id', '>', $cursor)
+                    ->orderBy('id')
+                    ->limit($limit)
+                    ->get();
+
+                return $this->ok(MessageResource::collection($fresh), meta: [
+                    'has_more' => false,
+                    'next_before' => null,
+                    'unread' => $conversation->unreadFor($request->user()),
+                    'is_tail' => true,
+                ]);
+            }
+        }
 
         if ($before = $request->input('before')) {
             $cursor = Message::where('uuid', $before)->value('id');
@@ -92,6 +123,7 @@ class ChatController extends ApiController
             'has_more' => $hasMore,
             'next_before' => $hasMore ? $page->last()?->uuid : null,
             'unread' => $conversation->unreadFor($request->user()),
+            'is_tail' => false,
         ]);
     }
 

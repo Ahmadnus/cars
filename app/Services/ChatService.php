@@ -33,9 +33,32 @@ class ChatService
 
     public const IMAGE_MIMES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic'];
 
+    /**
+     * Accepted voice-note types.
+     *
+     * Wider than it looks, because an m4a *is* an MP4 container: depending on the
+     * `ftyp` brand the recorder writes, the same AAC voice note is sniffed as
+     * `audio/x-m4a`, `video/mp4` or `application/mp4`. Listing only the audio/*
+     * spellings rejected real recordings from Android — which is exactly what
+     * happened before this list was widened.
+     *
+     * The consequence is that a small MP4 video could be sent as a voice note.
+     * That is bounded by the 10 MB cap and the fact that this is a private thread
+     * between one trainee and their own trainer, and it is the right trade
+     * against refusing genuine recordings: container sniffing cannot separate an
+     * audio-only MP4 from one with a video track without decoding it.
+     */
     public const AUDIO_MIMES = [
-        'audio/mpeg', 'audio/mp4', 'audio/aac', 'audio/ogg',
-        'audio/webm', 'audio/wav', 'audio/x-m4a', 'audio/m4a',
+        // Explicit audio spellings.
+        'audio/mpeg', 'audio/mp4', 'audio/aac', 'audio/ogg', 'audio/opus',
+        'audio/webm', 'audio/wav', 'audio/x-wav', 'audio/wave',
+        'audio/x-m4a', 'audio/m4a', 'audio/3gpp', 'audio/amr',
+        // Raw AAC, as ADTS frames.
+        'audio/x-hx-aac-adts', 'audio/aacp',
+        // The ISO-BMFF family an m4a shares with MP4 video.
+        'video/mp4', 'application/mp4', 'video/quicktime',
+        // Some Android builds write a 3GPP container for AMR.
+        'video/3gpp',
     ];
 
     public function __construct(
@@ -266,10 +289,13 @@ class ChatService
             'image/webp' => 'webp',
             'image/heic' => 'heic',
             'audio/mpeg' => 'mp3',
-            'audio/mp4', 'audio/x-m4a', 'audio/m4a', 'audio/aac' => 'm4a',
-            'audio/ogg' => 'ogg',
+            'audio/mp4', 'audio/x-m4a', 'audio/m4a', 'audio/aac', 'audio/aacp',
+            'audio/x-hx-aac-adts', 'video/mp4', 'application/mp4',
+            'video/quicktime' => 'm4a',
+            'audio/ogg', 'audio/opus' => 'ogg',
             'audio/webm' => 'weba',
-            'audio/wav' => 'wav',
+            'audio/wav', 'audio/x-wav', 'audio/wave' => 'wav',
+            'audio/3gpp', 'video/3gpp', 'audio/amr' => '3gp',
             default => 'bin',
         };
     }

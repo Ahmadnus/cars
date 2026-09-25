@@ -235,6 +235,67 @@ class ChatTest extends TestCase
         );
     }
 
+    /**
+     * The polling call returns only what is new.
+     *
+     * The app checks every two seconds, so this must not re-send the visible
+     * thread each time — that is the difference between a near-empty response and
+     * thirty messages, thirty times a minute, per open chat.
+     */
+    public function test_the_after_cursor_returns_only_newer_messages(): void
+    {
+        $conversation = $this->conversation();
+
+        Sanctum::actingAs($this->traineeUser);
+
+        foreach (['واحد', 'اثنان'] as $text) {
+            $this->postJson("/api/v1/chat/conversations/{$conversation->uuid}/messages", [
+                'body' => $text,
+            ])->assertCreated();
+        }
+
+        $anchor = Message::orderByDesc('id')->value('uuid');
+
+        // Nothing newer yet.
+        $this->getJson("/api/v1/chat/conversations/{$conversation->uuid}/messages?after={$anchor}")
+            ->assertOk()
+            ->assertJsonPath('meta.is_tail', true)
+            ->assertJsonCount(0, 'data');
+
+        // The trainer replies.
+        Sanctum::actingAs($this->trainerUser);
+        $this->postJson("/api/v1/chat/conversations/{$conversation->uuid}/messages", [
+            'body' => 'وصلني سؤالك',
+        ])->assertCreated();
+
+        Sanctum::actingAs($this->traineeUser);
+
+        $response = $this->getJson(
+            "/api/v1/chat/conversations/{$conversation->uuid}/messages?after={$anchor}",
+        )->assertOk()->assertJsonCount(1, 'data');
+
+        $this->assertSame('وصلني سؤالك', $response->json('data.0.body'));
+        $this->assertSame('trainer', $response->json('data.0.sender_role'));
+    }
+
+    /** An unknown cursor falls back to the newest page rather than erroring. */
+    public function test_an_unknown_after_cursor_returns_the_latest_page(): void
+    {
+        $conversation = $this->conversation();
+
+        Sanctum::actingAs($this->traineeUser);
+
+        $this->postJson("/api/v1/chat/conversations/{$conversation->uuid}/messages", [
+            'body' => 'رسالة',
+        ])->assertCreated();
+
+        $this->getJson(
+            "/api/v1/chat/conversations/{$conversation->uuid}/messages?after=does-not-exist",
+        )->assertOk()
+            ->assertJsonPath('meta.is_tail', false)
+            ->assertJsonCount(1, 'data');
+    }
+
     // ------------------------------------------------------------ attachments
 
     public function test_an_image_is_stored_privately_and_served_through_the_api(): void
@@ -322,6 +383,54 @@ class ChatTest extends TestCase
             ->assertJsonPath('data.duration_seconds', 14);
 
         $this->assertSame('🎤 رسالة صوتية', Message::first()->preview());
+    }
+
+    /**
+     * The voice note a real Android recorder produces.
+     *
+     * An m4a is an MP4 container, so depending on the `ftyp` brand the same AAC
+     * recording is sniffed as `audio/x-m4a`, `video/mp4` or `application/mp4`.
+     * The first version of the whitelist held only `audio/*` spellings and
+     * rejected genuine recordings from the app with "نوع الملف غير مدعوم" — this
+     * pins each brand so that cannot come back.
+     *
+     */
+    public function test_every_container_brand_a_recorder_writes_is_accepted(): void
+    {
+        Storage::fake('private');
+
+        $conversation = $this->conversation();
+
+        // Real ISO-BMFF headers, one per brand a phone may write. Written as
+        // escapes rather than literal bytes so the file stays valid UTF-8.
+        $brands = [
+            'M4A ' => "\x00\x00\x00\x20ftypM4A \x00\x00\x02\x00M4A mp42isom",
+            'mp42' => "\x00\x00\x00\x18ftypmp42\x00\x00\x00\x00mp42isom",
+            'adts' => "\xFF\xF1\x50\x80\x00\x1F\xFC".str_repeat("\x00", 512),
+        ];
+
+        foreach ($brands as $label => $header) {
+            $path = tempnam(sys_get_temp_dir(), 'note').'.m4a';
+            file_put_contents($path, $header.str_repeat("\x00", 2048));
+
+            Sanctum::actingAs($this->traineeUser);
+
+            $this->post(
+                "/api/v1/chat/conversations/{$conversation->uuid}/messages",
+                [
+                    'type' => 'audio',
+                    'duration_seconds' => 7,
+                    'attachment' => new UploadedFile($path, 'note.m4a', 'audio/mp4', null, true),
+                ],
+                ['Accept' => 'application/json'],
+            )->assertCreated("brand {$label} must be accepted as a voice note");
+        }
+
+        $this->assertSame(
+            count($brands),
+            Message::where('type', 'audio')->count(),
+            'every brand should have produced a stored voice note',
+        );
     }
 
     public function test_a_closed_thread_accepts_nothing(): void
