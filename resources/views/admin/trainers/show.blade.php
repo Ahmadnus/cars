@@ -100,6 +100,15 @@
     </div>
 
     <div class="space-y-5">
+        {{-- The app login first: a trainer who cannot sign in cannot do any of
+             the rest of this page, and staff open it to hand over a password. --}}
+        <x-account.panel
+            :subject="$trainer"
+            issue-route="admin.trainers.account"
+            suspend-route="admin.trainers.account.suspend"
+            :can-manage="auth()->user()->hasPermission('trainers.update')"
+            title="حساب التطبيق وكلمة المرور" />
+
         <x-ui.card padded="false" :title="'المتدربون المسندون (' . $trainees->count() . ')'">
             @if ($trainees->isEmpty())
                 <x-ui.empty-state icon="users" title="لا يوجد متدربون" />
@@ -159,13 +168,6 @@
                 @endcanDo
             </x-ui.card>
         @endisset
-
-        <x-account.panel
-            :subject="$trainer"
-            issue-route="admin.trainers.account"
-            suspend-route="admin.trainers.account.suspend"
-            :can-manage="auth()->user()->hasPermission('trainers.update')"
-            title="حساب التطبيق" />
 
         <x-ui.card title="المركبات المسندة">
             @forelse ($trainer->vehicles as $vehicle)

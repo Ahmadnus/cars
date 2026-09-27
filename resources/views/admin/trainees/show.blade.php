@@ -119,6 +119,15 @@
         </div>
 
         <div class="space-y-5">
+            {{-- The app login, on the first tab. It was under "الملاحظات"
+                 before, which is a tab nobody opens to hand over a password. --}}
+            <x-account.panel
+                :subject="$trainee"
+                issue-route="admin.trainees.account"
+                suspend-route="admin.trainees.account.suspend"
+                :can-manage="auth()->user()->hasPermission('trainees.update')"
+                title="حساب التطبيق وكلمة المرور" />
+
             <x-ui.card title="الجاهزية للامتحان">
                 <div class="flex items-center gap-4">
                     <div class="relative size-20 shrink-0">
@@ -429,13 +438,6 @@
                 </form>
             </x-ui.card>
         @endcanDo
-
-        <x-account.panel
-            :subject="$trainee"
-            issue-route="admin.trainees.account"
-            suspend-route="admin.trainees.account.suspend"
-            :can-manage="auth()->user()->hasPermission('trainees.update')"
-            title="حساب التطبيق" />
 
         <x-ui.card title="الملاحظات">
             @forelse ($notes as $note)

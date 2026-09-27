@@ -50,6 +50,36 @@ class AccountUiSmokeTest extends TestCase
             ->assertDontSee('login_roles[]', false);
     }
 
+    /**
+     * The panel is on the tab that opens, not one the user has to find.
+     *
+     * assertSee alone cannot tell: the trainee page is tabbed with Alpine, and
+     * the markup of a hidden tab is still in the response. It shipped hidden
+     * under "الملاحظات" for exactly that reason, so this asserts position — the
+     * panel has to appear before the second tab's section starts.
+     */
+    public function test_the_trainee_account_panel_is_on_the_first_tab(): void
+    {
+        $trainee = Trainee::factory()->create(['branch_id' => $this->branch->id]);
+
+        $html = $this->get(route('admin.trainees.show', $trainee))->assertOk()->content();
+
+        $panel = strpos($html, 'حساب التطبيق');
+
+        // The section, not the tab button: the button for every tab is rendered
+        // near the top, so measuring against that would pass wherever the panel
+        // sat. `x-show` only ever wraps a section.
+        $secondSection = strpos($html, "x-show=\"tab === 'training'\"");
+
+        $this->assertNotFalse($panel, 'the account panel is missing');
+        $this->assertNotFalse($secondSection, 'the tab markup changed — check this test still measures what it claims');
+        $this->assertLessThan(
+            $secondSection,
+            $panel,
+            'the account panel is outside the overview tab, so staff cannot see it without hunting',
+        );
+    }
+
     public function test_the_person_pages_show_the_account_panel(): void
     {
         $trainee = Trainee::factory()->create(['branch_id' => $this->branch->id]);

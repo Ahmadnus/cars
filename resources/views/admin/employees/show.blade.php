@@ -93,6 +93,16 @@
     </div>
 
     <div class="space-y-5">
+        {{-- The dashboard login first: it is what the employee needs before
+             anything else on this page matters. --}}
+        <x-account.panel
+            :subject="$employee"
+            issue-route="admin.employees.account"
+            suspend-route="admin.employees.account.suspend"
+            :roles="$assignableRoles ?? []"
+            :can-manage="auth()->user()->hasPermission('employees.update')"
+            title="حساب لوحة التحكم وكلمة المرور" />
+
         @canDo('salaries.view')
             <x-ui.card title="تفاصيل الراتب">
                 <dl class="space-y-2 text-sm">
@@ -141,14 +151,6 @@
                 </div>
             </dl>
         </x-ui.card>
-
-        <x-account.panel
-            :subject="$employee"
-            issue-route="admin.employees.account"
-            suspend-route="admin.employees.account.suspend"
-            :roles="$assignableRoles ?? []"
-            :can-manage="auth()->user()->hasPermission('employees.update')"
-            title="حساب لوحة التحكم" />
 
         @if ($employee->notes)
             <x-ui.card title="ملاحظات">
