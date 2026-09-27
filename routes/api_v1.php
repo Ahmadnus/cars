@@ -38,6 +38,15 @@ Route::post('auth/login', [AuthController::class, 'login'])
 // Phone + passcode, which is how trainees sign in — they have no password.
 // Throttled tighter than the password flow because each request can cost a
 // provider message.
+// "I cannot sign in." There is no automatic reset — no SMS gateway, and the
+// address on a phone-only account goes nowhere — so this asks the office to
+// issue a new password and hand it over by phone or WhatsApp. Throttled hard: it
+// writes a notification to staff, and a loose limit would let anyone flood the
+// bell that reception actually watches.
+Route::post('auth/password/reset-request', [AuthController::class, 'requestPasswordReset'])
+    ->middleware('throttle:3,10')
+    ->name('auth.password.reset-request');
+
 Route::post('auth/otp/request', [OtpController::class, 'request'])
     ->middleware('throttle:6,1')
     ->name('auth.otp.request');

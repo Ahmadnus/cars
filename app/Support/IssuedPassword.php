@@ -40,7 +40,10 @@ class IssuedPassword
             // Typed twice: the office is about to dictate it, and a typo here
             // becomes a trainee who cannot sign in and nobody who can check.
             'confirmed',
-            'alpha_num',
+            // :ascii matters — bare alpha_num accepts Arabic letters, and a
+            // password in Arabic script cannot be dictated over a phone or
+            // typed without switching keyboards mid-login.
+            'alpha_num:ascii',
             'min:'.self::MIN_LENGTH,
             'max:'.self::LENGTH,
         ];

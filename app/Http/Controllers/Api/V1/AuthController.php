@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Resources\UserResource;
 use App\Models\LoginHistory;
 use App\Models\User;
+use App\Services\NotificationService;
+use App\Support\IssuedPassword;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -128,11 +130,26 @@ class AuthController extends ApiController
 
     public function changePassword(Request $request): JsonResponse
     {
+        $user = $request->user();
+
+        // A trainee or trainer typing on a phone keeps the handed-out policy
+        // (letters or digits, six to eight); anyone who can reach money or other
+        // people's records keeps the full one. Holding a trainee to a symbol and
+        // a capital is how a password ends up written inside the car.
+        $policy = $this->isAppAccount($user)
+            ? ['required', 'confirmed', 'string', 'alpha_num:ascii', 'min:'.IssuedPassword::MIN_LENGTH, 'max:64']
+            : ['required', 'confirmed', \Illuminate\Validation\Rules\Password::defaults()];
+
         $data = $request->validate([
             'current_password' => ['required', 'current_password:sanctum'],
-            'password' => ['required', 'confirmed', \Illuminate\Validation\Rules\Password::defaults()],
+            'password' => $policy,
         ], [
             'current_password.current_password' => 'كلمة المرور الحالية غير صحيحة.',
+            'password.alpha_num' => 'كلمة المرور: أحرف إنجليزية أو أرقام فقط.',
+            'password.ascii' => 'كلمة المرور: أحرف إنجليزية أو أرقام فقط.',
+        ], [
+            'current_password' => 'كلمة المرور الحالية',
+            'password' => 'كلمة المرور الجديدة',
         ]);
 
         $request->user()->update(['password' => Hash::make($data['password'])]);
@@ -142,6 +159,65 @@ class AuthController extends ApiController
         $request->user()->tokens()->whereKeyNot($current?->id)->delete();
 
         return $this->ok(message: 'تم تغيير كلمة المرور. تم تسجيل الخروج من الأجهزة الأخرى.');
+    }
+
+    /**
+     * "I cannot sign in" — ask the office for a new password.
+     *
+     * There is no automatic reset. These accounts sign in by phone; the address
+     * on a phone-only account is one the office invented and nobody reads, and
+     * there is no SMS gateway. So this raises a job for staff, who reset the
+     * password on the person's page and hand it over on the same channel they
+     * used the first time — which is also what establishes that the person
+     * asking is who they say.
+     *
+     * Answers identically whether or not the number is registered: a different
+     * reply would turn this into a way to find out who trains here.
+     */
+    public function requestPasswordReset(Request $request, NotificationService $notifications): JsonResponse
+    {
+        $data = $request->validate([
+            'phone' => ['required', 'string', 'max:30'],
+        ], [], ['phone' => 'رقم الهاتف']);
+
+        $digits = preg_replace('/\D/', '', $data['phone']) ?? '';
+
+        if (strlen($digits) >= 9) {
+            $user = User::whereNotNull('phone')
+                ->whereRaw(
+                    "RIGHT(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(phone, ' ', ''), '-', ''), '+', ''), '(', ''), ')', ''), 9) = ?",
+                    [substr($digits, -9)],
+                )
+                ->with(['trainee', 'trainer', 'employee'])
+                ->first();
+
+            if ($user) {
+                // After the response would be better, but the office hearing
+                // about it is the entire point of the call — so a provider
+                // failure is caught rather than swallowing the request.
+                try {
+                    $notifications->passwordResetRequested($user, $data['phone']);
+                } catch (\Throwable $e) {
+                    report($e);
+                }
+            }
+        }
+
+        return $this->ok(message: 'تم إبلاغ إدارة المركز. سيتم التواصل معك على رقمك لتسليمك كلمة مرور جديدة.');
+    }
+
+    /**
+     * An account that exists to use one of the apps, rather than to run the
+     * center: it reaches its own file and nothing else.
+     */
+    protected function isAppAccount(User $user): bool
+    {
+        if ($user->isSuperAdmin()) {
+            return false;
+        }
+
+        return ($user->trainee !== null || $user->trainer !== null)
+            && ! $user->hasAnyPermission(...\App\Support\Permissions::sensitive());
     }
 
     /**

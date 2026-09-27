@@ -228,6 +228,50 @@ class NotificationService
         );
     }
 
+    /**
+     * Someone cannot sign in and is asking the office for a new password.
+     *
+     * There is no self-service reset: no SMS gateway, and email addresses the
+     * office invented for phone-only accounts go nowhere. So the request becomes
+     * a job for a member of staff, who resets the password on the person's page
+     * and reads it out — the same channel the account was handed over on in the
+     * first place, which is also the one that proves who is asking.
+     *
+     * Deliberately carries no link to the record: staff search by the name and
+     * number, and a request from a stranger's phone must not hand out a route
+     * into a trainee's file.
+     */
+    public function passwordResetRequested(User $user, string $enteredPhone): void
+    {
+        $subject = $user->trainee ?? $user->trainer ?? $user->employee;
+
+        $permission = match (true) {
+            $user->trainee !== null => 'trainees.update',
+            $user->trainer !== null => 'trainers.update',
+            default => 'users.update',
+        };
+
+        $role = match (true) {
+            $user->trainee !== null => 'متدرب',
+            $user->trainer !== null => 'مدرب',
+            default => 'مستخدم',
+        };
+
+        $this->notify(
+            $this->staffFor($subject?->branch_id ?? $user->branch_id ?? 0, $permission),
+            'account.password_reset_requested',
+            'طلب كلمة مرور جديدة',
+            "طلب {$role} «".($subject?->full_name ?? $user->name)."» كلمة مرور جديدة (".$enteredPhone.")."
+                .' أعد تعيينها من صفحته وأرسلها له.',
+            [
+                'kind' => 'password_reset',
+                'phone' => $enteredPhone,
+            ],
+            null,
+            'warning',
+        );
+    }
+
     /** A trainee did not turn up, which costs them a lesson. */
     public function sessionMissed(TrainingSession $session): void
     {
