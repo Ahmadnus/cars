@@ -2,8 +2,12 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Http\Resources\TrainingSessionResource;
 use App\Models\Trainer;
 use App\Models\TrainerCompensationRecord;
+use App\Models\TrainingSession;
+use App\Services\AppointmentService;
+use App\Services\NotificationService;
 use App\Services\TrainerCompensationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -147,6 +151,73 @@ class TrainerSelfController extends ApiController
                 : [],
             'note' => $note,
         ];
+    }
+
+    /**
+     * Move one of my own lessons.
+     *
+     * The center decided a trainer may reschedule their own diary without asking
+     * anyone: they are the one who knows they cannot make 08:00, and routing that
+     * through the office only delays the trainee being told. So there is no
+     * approval step here — but the move is audited, the office is notified with
+     * the trainer's name, and so is the trainee.
+     *
+     * Only the trainer's own lessons: the session is looked up through their own
+     * relation, so another trainer's id reads as not found rather than forbidden.
+     * And it goes through AppointmentService like any other move, so the same
+     * conflict, working-hours and vehicle rules apply — a trainer cannot put
+     * themselves in two cars at once just because nobody approves this.
+     */
+    public function reschedule(
+        Request $request,
+        string $session,
+        AppointmentService $appointments,
+        NotificationService $notifications,
+    ): JsonResponse {
+        $trainer = $this->trainer($request);
+
+        $lesson = TrainingSession::where('uuid', $session)
+            ->where('trainer_id', $trainer->id)
+            ->firstOrFail();
+
+        $data = $request->validate([
+            'scheduled_date' => ['required', 'date', 'after_or_equal:today'],
+            'start_time' => ['required', 'date_format:H:i'],
+            'duration_minutes' => ['nullable', 'integer', 'min:15', 'max:300'],
+            'reason' => ['nullable', 'string', 'max:500'],
+        ], [], [
+            'scheduled_date' => 'التاريخ',
+            'start_time' => 'وقت البداية',
+            'reason' => 'السبب',
+        ]);
+
+        // Captured before the move: the notification says what it was, and after
+        // the update the old slot is gone.
+        $previous = $lesson->scheduled_date?->format('Y-m-d').' '
+            .substr((string) $lesson->start_time, 0, 5);
+
+        $updated = $appointments->reschedule(
+            $lesson,
+            [
+                'scheduled_date' => $data['scheduled_date'],
+                'start_time' => $data['start_time'],
+                'duration_minutes' => $data['duration_minutes'] ?? $lesson->duration_minutes,
+            ],
+            'تعديل من المدرب '.$trainer->full_name.($data['reason'] ?? '' ? ' — '.$data['reason'] : ''),
+        );
+
+        // After the commit: a provider timeout must not undo a move the calendar
+        // has already taken.
+        try {
+            $notifications->appointmentMovedByTrainer($updated, $previous, $data['reason'] ?? null);
+        } catch (\Throwable $e) {
+            report($e);
+        }
+
+        return $this->ok(
+            new TrainingSessionResource($updated->load('trainee', 'trainer', 'vehicle')),
+            'تم تعديل موعد الحصة وإبلاغ المتدرب والإدارة.',
+        );
     }
 
     /** The trainer record behind the token. See MeController::trainee(). */

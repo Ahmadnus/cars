@@ -125,6 +125,13 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
 
         // A trainer's own pay. Same no-id rule, so this needs no
         // trainer_compensation.view — see TrainerSelfController.
+        // A trainer moving their own lesson. No approval step: the center
+        // decided the diary is theirs, and routing it through the office only
+        // delays the trainee hearing about it. The office is notified instead,
+        // and the same conflict rules apply as any other move.
+        Route::post('sessions/{session}/reschedule', [TrainerSelfController::class, 'reschedule'])
+            ->name('sessions.reschedule');
+
         Route::get('compensation', [TrainerSelfController::class, 'statement'])->name('compensation');
         Route::get('compensation/history', [TrainerSelfController::class, 'statements'])->name('compensation.history');
     });

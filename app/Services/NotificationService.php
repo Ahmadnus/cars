@@ -63,6 +63,42 @@ class NotificationService
         );
     }
 
+    /**
+     * The trainer moved their own lesson.
+     *
+     * Named, and sent to the office as well as the trainee. The center allows a
+     * trainer to move their own diary without asking anyone — but the office
+     * still has to see that it happened and who did it, or the calendar changes
+     * under them with no explanation.
+     */
+    public function appointmentMovedByTrainer(TrainingSession $session, string $previous, ?string $reason = null): void
+    {
+        $session->loadMissing('trainee.user', 'trainer.user');
+
+        $trainerName = $session->trainer?->full_name ?? 'المدرب';
+
+        $this->notify(
+            $this->peopleFor($session)->merge(
+                $this->staffFor($session->branch_id, 'appointments.view'),
+            ),
+            'appointment.moved_by_trainer',
+            'قام المدرب بتعديل موعد الحصة',
+            "غيّر المدرب {$trainerName} موعد حصة "
+                .($session->trainee?->full_name ?? 'المتدرب')
+                ." من {$previous} إلى "
+                .$session->scheduled_date?->format('Y-m-d').' '
+                .substr((string) $session->start_time, 0, 5).'.'
+                .($reason ? " السبب: {$reason}" : ''),
+            [
+                'kind' => 'session',
+                'session_uuid' => $session->uuid,
+                'previous' => $previous,
+            ],
+            $this->safeRoute('admin.sessions.show', [$session]),
+            'warning',
+        );
+    }
+
     public function appointmentCancelled(TrainingSession $session): void
     {
         $this->notify(
@@ -377,6 +413,14 @@ class NotificationService
     // Training balance
     // ------------------------------------------------------------------
 
+    /**
+     * The trainee is near the end of their schedule.
+     *
+     * Worded as the center asked: "a low balance" reads like an accounting
+     * warning, and what a trainer or a receptionist actually needs to know is
+     * that this person is about to run out of lessons and should be offered the
+     * next package before their training stops.
+     */
     public function lowLessonBalance(TraineePackage $package, int $remaining): void
     {
         $trainee = $package->trainee;
@@ -384,12 +428,27 @@ class NotificationService
         $this->notify(
             $this->staffFor($package->branch_id, 'appointments.view')->merge(collect([$trainee?->user])->filter()),
             'balance.low',
-            'رصيد حصص منخفض',
-            "تبقّى {$remaining} حصة فقط للمتدرب {$trainee?->full_name}.",
+            'اقترب انتهاء جدول التدريب',
+            "أوشك المتدرب {$trainee?->full_name} على إنهاء حصصه — تبقّت له "
+                .$this->lessonsWord($remaining).'.',
             ['trainee_package_uuid' => $package->uuid, 'remaining' => $remaining],
             route('admin.trainees.show', $trainee, false),
             'warning',
         );
+    }
+
+    /**
+     * "حصة واحدة" / "حصتان" / "3 حصص" — Arabic counts differently by number, and
+     * "2 حصة" is the kind of wrong that makes a system look machine-written.
+     */
+    protected function lessonsWord(int $count): string
+    {
+        return match (true) {
+            $count === 1 => 'حصة واحدة',
+            $count === 2 => 'حصتان',
+            $count >= 3 && $count <= 10 => $count.' حصص',
+            default => $count.' حصة',
+        };
     }
 
     // ------------------------------------------------------------------
