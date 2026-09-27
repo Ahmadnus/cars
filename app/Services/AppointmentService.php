@@ -98,9 +98,21 @@ class AppointmentService
      *
      * @param  array{scheduled_date?:string, start_time?:string, duration_minutes?:int, trainer_id?:int, vehicle_id?:int|null}  $data
      */
-    public function reschedule(TrainingSession $session, array $data, ?string $reason = null): TrainingSession
-    {
-        return DB::transaction(function () use ($session, $data, $reason) {
+    /**
+     * Move a lesson.
+     *
+     * [$announce] is false when the caller sends its own, more specific message
+     * — a trainer moving their own diary tells the trainee who moved it and from
+     * when, and firing the generic notice as well would reach that trainee twice
+     * for one change and tell the trainer about their own action.
+     */
+    public function reschedule(
+        TrainingSession $session,
+        array $data,
+        ?string $reason = null,
+        bool $announce = true,
+    ): TrainingSession {
+        return DB::transaction(function () use ($session, $data, $reason, $announce) {
             $this->assertMutable($session);
 
             $original = $session->getOriginal();
@@ -133,7 +145,10 @@ class AppointmentService
             ]);
 
             $this->audit->logUpdate('appointment.rescheduled', $session, $original, $reason);
-            $this->notifications->appointmentChanged($session);
+
+            if ($announce) {
+                $this->notifications->appointmentChanged($session);
+            }
 
             return $session->fresh(['trainee', 'trainer', 'vehicle']);
         });

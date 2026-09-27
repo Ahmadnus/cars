@@ -64,28 +64,39 @@ class NotificationService
     }
 
     /**
-     * The trainer moved their own lesson.
+     * The trainer moved their own lesson — told to the trainee, and only them.
      *
-     * Named, and sent to the office as well as the trainee. The center allows a
-     * trainer to move their own diary without asking anyone — but the office
-     * still has to see that it happened and who did it, or the calendar changes
-     * under them with no explanation.
+     * The recipient list used to include every member of staff holding
+     * `appointments.view`, which is a permission the trainer role itself holds:
+     * so moving one lesson pinged every trainer at the branch about a trainee
+     * who is not theirs. A notification everyone gets is one everyone learns to
+     * ignore, and it leaked one trainee's schedule to colleagues with no reason
+     * to see it.
+     *
+     * The office is not notified here either, by the center's decision. It stays
+     * visible to them where a change belongs — the audit log records the move,
+     * who made it and why, and the lesson itself shows its new slot.
+     *
+     * Written to the trainee in the second person, because they are now the only
+     * reader: "your lesson", not "the trainee's lesson".
      */
     public function appointmentMovedByTrainer(TrainingSession $session, string $previous, ?string $reason = null): void
     {
         $session->loadMissing('trainee.user', 'trainer.user');
 
+        $trainee = $session->trainee?->user;
+
+        if (! $trainee) {
+            return;
+        }
+
         $trainerName = $session->trainer?->full_name ?? 'المدرب';
 
         $this->notify(
-            $this->peopleFor($session)->merge(
-                $this->staffFor($session->branch_id, 'appointments.view'),
-            ),
+            collect([$trainee]),
             'appointment.moved_by_trainer',
-            'قام المدرب بتعديل موعد الحصة',
-            "غيّر المدرب {$trainerName} موعد حصة "
-                .($session->trainee?->full_name ?? 'المتدرب')
-                ." من {$previous} إلى "
+            'تم تغيير موعد حصتك',
+            "غيّر المدرب {$trainerName} موعد حصتك من {$previous} إلى "
                 .$session->scheduled_date?->format('Y-m-d').' '
                 .substr((string) $session->start_time, 0, 5).'.'
                 .($reason ? " السبب: {$reason}" : ''),

@@ -204,6 +204,10 @@ class TrainerSelfController extends ApiController
                 'duration_minutes' => $data['duration_minutes'] ?? $lesson->duration_minutes,
             ],
             'تعديل من المدرب '.$trainer->full_name.($data['reason'] ?? '' ? ' — '.$data['reason'] : ''),
+            // The generic "the lesson moved" notice is suppressed: the one sent
+            // below names who moved it and from when, and both would reach the
+            // trainee twice for one change.
+            announce: false,
         );
 
         // After the commit: a provider timeout must not undo a move the calendar

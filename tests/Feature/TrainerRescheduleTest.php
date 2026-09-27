@@ -128,19 +128,60 @@ class TrainerRescheduleTest extends TestCase
     }
 
     /**
-     * And the office, named.
+     * Nobody else hears about it — not the office, not other trainers.
      *
-     * Nobody approved this, so the record of who did it is the only thing that
-     * keeps the calendar explicable a week later.
+     * The recipient list used to include everyone holding `appointments.view`,
+     * and the trainer role holds it: one trainee's schedule change was
+     * announced to every trainer at the branch. The office keeps its visibility
+     * through the audit log, which is asserted below.
      */
-    public function test_the_office_is_told_who_moved_it(): void
+    public function test_nobody_else_is_notified(): void
     {
         $lesson = $this->lesson();
-        $previous = $lesson->scheduled_date->format('Y-m-d').' 09:00';
+
+        $traineeUser = $this->userWithRole('trainee');
+        $this->trainee->forceFill(['user_id' => $traineeUser->id])->save();
 
         Notification::fake();
 
         $receptionist = $this->userWithRole('receptionist');
+        $manager = $this->userWithRole('center_manager');
+
+        // Another trainer at the same branch: this trainee is not theirs.
+        $colleagueUser = $this->userWithRole('trainer');
+        Trainer::factory()->create([
+            'branch_id' => $this->branch->id,
+            'user_id' => $colleagueUser->id,
+        ]);
+
+        Sanctum::actingAs($this->trainerUser);
+
+        $this->postJson("/api/v1/me/sessions/{$lesson->uuid}/reschedule", [
+            'scheduled_date' => $this->workingDay(minimumOffset: 6)->toDateString(),
+            'start_time' => '13:00',
+        ])->assertOk();
+
+        Notification::assertSentTo($traineeUser, SystemNotification::class);
+
+        foreach ([$receptionist, $manager, $colleagueUser, $this->trainerUser] as $other) {
+            Notification::assertNotSentTo($other, SystemNotification::class);
+        }
+
+        // Exactly one recipient, so a new branch in the fan-out cannot slip past
+        // the checks above.
+        Notification::assertSentTimes(SystemNotification::class, 1);
+    }
+
+    /** Addressed to the trainee, since they are the only one reading it. */
+    public function test_the_trainee_is_told_what_changed(): void
+    {
+        $lesson = $this->lesson();
+        $previous = $lesson->scheduled_date->format('Y-m-d').' 09:00';
+
+        $traineeUser = $this->userWithRole('trainee');
+        $this->trainee->forceFill(['user_id' => $traineeUser->id])->save();
+
+        Notification::fake();
 
         Sanctum::actingAs($this->trainerUser);
 
@@ -150,10 +191,9 @@ class TrainerRescheduleTest extends TestCase
             'reason' => 'ظرف طارئ',
         ])->assertOk();
 
-        Notification::assertSentTo($receptionist, function (SystemNotification $notification) use ($previous) {
-            return $notification->type === 'appointment.moved_by_trainer'
+        Notification::assertSentTo($traineeUser, function (SystemNotification $notification) use ($previous) {
+            return str_contains($notification->title, 'حصتك')
                 && str_contains($notification->body, 'عمر الزعبي')
-                && str_contains($notification->body, 'سارة الخطيب')
                 // What it was, not only what it became.
                 && str_contains($notification->body, $previous)
                 && str_contains($notification->body, 'ظرف طارئ');
