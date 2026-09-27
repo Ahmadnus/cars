@@ -160,6 +160,13 @@
             </x-ui.card>
         @endisset
 
+        <x-account.panel
+            :subject="$trainer"
+            issue-route="admin.trainers.account"
+            suspend-route="admin.trainers.account.suspend"
+            :can-manage="auth()->user()->hasPermission('trainers.update')"
+            title="حساب التطبيق" />
+
         <x-ui.card title="المركبات المسندة">
             @forelse ($trainer->vehicles as $vehicle)
                 <div class="flex items-center justify-between gap-3 border-b border-ink-100 py-2 first:pt-0 last:border-0 last:pb-0">

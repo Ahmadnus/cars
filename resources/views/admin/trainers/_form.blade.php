@@ -79,6 +79,11 @@
         </x-ui.card>
 
         @unless ($trainer)
+            <x-account.fields
+                hint="يدخل المدرب على التطبيق برقم هاتفه. تظهر كلمة المرور مرة واحدة بعد الحفظ." />
+        @endunless
+
+        @unless ($trainer)
             <x-ui.alert type="info">
                 بعد إضافة المدرب، حدّد قاعدة الأجر الخاصة به من صفحة «أجور المدربين».
             </x-ui.alert>

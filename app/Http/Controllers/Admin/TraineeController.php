@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Http\Controllers\Concerns\IssuesLoginAccounts;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreTraineeRequest;
 use App\Http\Requests\UpdateTraineeRequest;
@@ -10,6 +11,7 @@ use App\Models\Package;
 use App\Models\Trainee;
 use App\Models\Trainer;
 use App\Models\TrainingSkill;
+use App\Services\AccountService;
 use App\Services\AuditLogger;
 use App\Services\NumberGenerator;
 use App\Services\PaymentService;
@@ -24,6 +26,8 @@ use Illuminate\View\View;
 
 class TraineeController extends Controller
 {
+    use IssuesLoginAccounts;
+
     public function __construct(
         protected BranchContext $branchContext,
         protected NumberGenerator $numbers,
@@ -103,9 +107,49 @@ class TraineeController extends Controller
             return $trainee;
         });
 
+        // The office creates the trainee's login here rather than making them
+        // apply through the app: someone standing at the desk should leave able
+        // to sign in. Outside the transaction above, so a clashing phone number
+        // does not discard the trainee's file.
+        if ($request->boolean('create_login')) {
+            return $this->issueAccountFor(
+                $trainee,
+                $this->validateCredentials($request),
+                'admin.trainees.show',
+                "تم تسجيل المتدرب برقم {$trainee->trainee_number} وإنشاء حساب الدخول.",
+            );
+        }
+
         return redirect()
             ->route('admin.trainees.show', $trainee)
             ->with('toast', ['type' => 'success', 'message' => "تم تسجيل المتدرب برقم {$trainee->trainee_number}."]);
+    }
+
+    /**
+     * Create the trainee's app login, or reset its password.
+     *
+     * Behind `trainees.update`: it administers one trainee's own access and
+     * cannot reach any other account.
+     */
+    public function issueAccount(Request $request, Trainee $trainee): RedirectResponse
+    {
+        $this->authorize('update', $trainee);
+
+        $data = $this->validateCredentials($request, $trainee->user_id);
+
+        return $this->issueAccountFor($trainee, $data, 'admin.trainees.show');
+    }
+
+    /** Close the login. The training file, payments and evaluations stay. */
+    public function suspendAccount(Trainee $trainee, AccountService $accounts): RedirectResponse
+    {
+        $this->authorize('update', $trainee);
+
+        $accounts->suspend($trainee);
+
+        return redirect()
+            ->route('admin.trainees.show', $trainee)
+            ->with('toast', ['type' => 'success', 'message' => 'تم تعطيل حساب المتدرب.']);
     }
 
     public function show(Request $request, Trainee $trainee, TrainingSessionService $sessions, PaymentService $payments): View

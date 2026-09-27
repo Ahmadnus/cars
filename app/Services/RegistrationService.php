@@ -35,23 +35,21 @@ class RegistrationService
     /**
      * Record a request from the public app.
      *
-     * The phone must already be proven by passcode: without that the form is an
-     * open channel for junk submitted under other people's numbers.
+     * No passcode. The center asked for the lowest possible barrier: a stranger
+     * fills the form and staff decide. That is safe because the request is inert —
+     * it creates no trainee, no number and no login, and a member of staff phones
+     * the applicant before approving, which verifies the number far better than an
+     * automated code would.
+     *
+     * What protects it instead: a tight rate limit on the route, one open request
+     * per number, and `phone_verified_at` left null so the queue shows plainly
+     * that nobody has confirmed this number yet.
      *
      * @param  array<string, mixed>  $data
      */
-    public function submit(array $data, string $code, ?string $ip = null): RegistrationRequest
+    public function submit(array $data, ?string $ip = null): RegistrationRequest
     {
         $phone = $this->otp->normalisePhone((string) $data['phone']);
-
-        $verification = $this->otp->verify($phone, $code, 'registration');
-
-        if (! $verification['ok']) {
-            throw BusinessRuleException::make(
-                $verification['error'] ?? 'رمز التحقق غير صحيح.',
-                ['code' => [$verification['error'] ?? 'رمز التحقق غير صحيح.']],
-            );
-        }
 
         $this->assertNotAlreadyKnown($phone);
 
@@ -67,7 +65,9 @@ class RegistrationService
             'address' => $data['address'] ?? null,
             'license_type' => $data['license_type'] ?? null,
             'notes' => $data['notes'] ?? null,
-            'phone_verified_at' => now(),
+            // Left null on purpose: nothing has verified this number. Staff
+            // confirm it by calling, and the queue labels it until they do.
+            'phone_verified_at' => null,
             'status' => RegistrationRequest::STATUS_PENDING,
             'ip_address' => $ip,
         ]);

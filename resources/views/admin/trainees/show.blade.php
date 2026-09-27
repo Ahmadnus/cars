@@ -430,6 +430,13 @@
             </x-ui.card>
         @endcanDo
 
+        <x-account.panel
+            :subject="$trainee"
+            issue-route="admin.trainees.account"
+            suspend-route="admin.trainees.account.suspend"
+            :can-manage="auth()->user()->hasPermission('trainees.update')"
+            title="حساب التطبيق" />
+
         <x-ui.card title="الملاحظات">
             @forelse ($notes as $note)
                 <div class="border-b border-ink-100 py-3 first:pt-0 last:border-0 last:pb-0">

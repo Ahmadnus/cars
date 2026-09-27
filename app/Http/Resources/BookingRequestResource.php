@@ -20,6 +20,19 @@ class BookingRequestResource extends JsonResource
             'trainee_note' => $this->trainee_note,
             'admin_note' => $this->admin_note,
             'resolved_at' => $this->resolved_at?->toIso8601String(),
+            // The trainer's say, so both apps and the dashboard can show who
+            // agreed rather than only that something changed.
+            'trainer_decision' => $this->trainer_decision,
+            'trainer_decision_label' => $this->trainerDecisionLabel(),
+            'trainer_note' => $this->trainer_note,
+            'trainer_decided_at' => $this->trainer_decided_at?->toIso8601String(),
+            'trainer_decided_by' => $this->whenLoaded(
+                'trainerDecider',
+                fn () => $this->trainerDecider?->trainer?->full_name ?? $this->trainerDecider?->name,
+            ),
+            'awaiting_trainer' => $this->awaitingTrainer(),
+            'ready_for_office' => $this->readyForOffice(),
+
             'created_at' => $this->created_at?->toIso8601String(),
 
             'trainee' => $this->whenLoaded('trainee', fn () => [

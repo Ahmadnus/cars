@@ -84,8 +84,12 @@ class UserController extends Controller
                 'branch_id' => $data['branch_id'],
                 'can_access_all_branches' => (bool) ($data['can_access_all_branches'] ?? false),
                 'status' => $data['status'],
-                'email_verified_at' => now(),
             ]);
+
+            // Not in User's fillable list, so it has to be set explicitly:
+            // passed to create() it throws locally and is silently dropped in
+            // production, which left staff accounts unverified.
+            $user->forceFill(['email_verified_at' => now()])->save();
 
             $user->roles()->sync($data['roles']);
             $user->branches()->sync($data['branches'] ?? [$data['branch_id']]);

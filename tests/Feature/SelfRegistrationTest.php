@@ -15,10 +15,12 @@ use Tests\TestCase;
 /**
  * Public self-registration.
  *
- * This is the only place in the system a stranger can write to, so the tests
- * are written around what must *not* happen: no trainee created without staff
- * approval, no request accepted under an unproven phone number, and no way to
- * learn from the responses who is already enrolled.
+ * The only place in the system a stranger can write to, and deliberately without
+ * a passcode: the center wanted the lowest barrier, and the request is inert
+ * until staff act on it. So the tests are written around the thing that actually
+ * protects it — that nothing reaches the training records without approval, that
+ * one number cannot stack up open requests, and that a number already enrolled is
+ * refused.
  */
 class SelfRegistrationTest extends TestCase
 {
@@ -28,20 +30,6 @@ class SelfRegistrationTest extends TestCase
     {
         parent::setUp();
         $this->seedFoundation();
-
-        // Codes are returned in the response outside production, which is how
-        // the app can be driven without a live SMS provider.
-        config(['otp.expose_code' => true, 'otp.enable_fixed_codes' => false]);
-    }
-
-    /** Ask for a code and read it back, the way the app does. */
-    protected function codeFor(string $phone): string
-    {
-        $response = $this->postJson('/api/v1/public/registrations/request-code', [
-            'phone' => $phone,
-        ])->assertOk();
-
-        return (string) $response->json('data.code');
     }
 
     /** @return array<string, mixed> */
@@ -68,15 +56,18 @@ class SelfRegistrationTest extends TestCase
             ->assertJsonStructure(['data' => ['branches', 'license_types', 'genders']]);
     }
 
-    public function test_a_stranger_can_submit_a_request_after_proving_their_phone(): void
+    /**
+     * A stranger applies with no passcode at all.
+     *
+     * The barrier is a member of staff reading it, not a code — so what this pins
+     * is that the request stays inert: no trainee, no trainee number, no login.
+     */
+    public function test_a_stranger_can_apply_with_no_passcode(): void
     {
         Event::fake([RegistrationRequestUpdated::class]);
 
-        $code = $this->codeFor('0791234567');
-
-        $response = $this->postJson('/api/v1/public/registrations', $this->form([
-            'code' => $code,
-        ]))->assertCreated();
+        $response = $this->postJson('/api/v1/public/registrations', $this->form())
+            ->assertCreated();
 
         $reference = $response->json('data.reference');
 
@@ -94,104 +85,70 @@ class SelfRegistrationTest extends TestCase
         Event::assertDispatched(RegistrationRequestUpdated::class);
     }
 
-    public function test_a_request_without_a_valid_code_is_refused(): void
+    /**
+     * The number is not treated as verified.
+     *
+     * Nothing has checked it, and the queue labels it so a reviewer knows to
+     * phone the applicant rather than assume.
+     */
+    public function test_the_phone_is_recorded_as_unverified(): void
     {
-        $this->codeFor('0791234567');
+        $this->postJson('/api/v1/public/registrations', $this->form())->assertCreated();
 
-        $this->postJson('/api/v1/public/registrations', $this->form([
-            'code' => '000000',
-        ]))->assertStatus(422);
+        $request = RegistrationRequest::firstOrFail();
 
-        $this->assertSame(0, RegistrationRequest::count());
+        $this->assertNull($request->phone_verified_at);
+        $this->assertFalse($request->isVerified());
     }
 
-    public function test_a_request_with_no_code_at_all_is_refused(): void
+    /** One open request per number, so the queue cannot be stacked up. */
+    public function test_a_second_open_request_from_one_number_is_refused(): void
     {
-        $this->postJson('/api/v1/public/registrations', $this->form())
-            ->assertStatus(422)
-            ->assertJsonValidationErrors('code');
+        $this->postJson('/api/v1/public/registrations', $this->form())->assertCreated();
 
-        $this->assertSame(0, RegistrationRequest::count());
-    }
-
-    public function test_a_code_cannot_be_reused_for_a_second_request(): void
-    {
-        $code = $this->codeFor('0791234567');
-
-        $this->postJson('/api/v1/public/registrations', $this->form(['code' => $code]))
-            ->assertCreated();
-
-        // Same code, different applicant: the code was consumed.
         $this->postJson('/api/v1/public/registrations', $this->form([
-            'code' => $code,
-            'full_name' => 'شخص آخر تماماً',
+            'full_name' => 'نفس الرقم مرة ثانية',
         ]))->assertStatus(422);
 
         $this->assertSame(1, RegistrationRequest::count());
     }
 
     /**
-     * A login passcode must not double as a registration passcode.
+     * A refused application frees the number.
      *
-     * Separate purposes are what stop a code phished for one flow being
-     * replayed in the other.
+     * Someone rejected for a missing document has to be able to apply again
+     * once they have it.
      */
-    public function test_a_login_code_cannot_be_used_to_register(): void
+    public function test_a_rejected_number_may_apply_again(): void
     {
-        $user = $this->userWithRole('receptionist', ['phone' => '0791234567']);
+        $first = $this->submitted();
 
-        $login = app(OtpService::class)->request('0791234567', null, 'login');
+        Sanctum::actingAs($this->userWithRole('receptionist'));
+        $this->postJson("/api/v1/registrations/{$first->uuid}/reject", [
+            'reason' => 'الرقم الوطني ناقص.',
+        ])->assertOk();
 
-        $this->assertNotNull($login['code'], 'the login flow should expose a code in tests');
+        // Back to being a stranger.
+        app('auth')->forgetGuards();
 
-        $this->postJson('/api/v1/public/registrations', $this->form([
-            'code' => $login['code'],
-        ]))->assertStatus(422);
+        $this->postJson('/api/v1/public/registrations', $this->form())->assertCreated();
 
-        $this->assertSame(0, RegistrationRequest::count());
-        $this->assertNotNull($user->fresh());
+        $this->assertSame(2, RegistrationRequest::count());
     }
 
-    public function test_a_second_code_cannot_be_requested_immediately(): void
+    public function test_the_name_and_phone_are_required(): void
     {
-        $this->codeFor('0791234567');
-
-        $this->postJson('/api/v1/public/registrations/request-code', ['phone' => '0791234567'])
-            ->assertStatus(429);
+        $this->postJson('/api/v1/public/registrations', ['city' => 'عمّان'])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['full_name', 'phone']);
     }
 
-    /**
-     * The answer must not reveal who is already enrolled.
-     *
-     * An existing trainee and an unknown number have to be indistinguishable at
-     * the code step, or the endpoint becomes a customer lookup.
-     */
-    public function test_requesting_a_code_reveals_nothing_about_enrolment(): void
+    public function test_an_enrolled_number_is_refused(): void
     {
         Trainee::factory()->create(['branch_id' => $this->branch->id, 'phone' => '0799999999']);
-
-        $known = $this->postJson('/api/v1/public/registrations/request-code', ['phone' => '0799999999'])
-            ->assertOk();
-
-        $unknown = $this->postJson('/api/v1/public/registrations/request-code', ['phone' => '0788888888'])
-            ->assertOk();
-
-        $this->assertSame($known->json('message'), $unknown->json('message'));
-        $this->assertSame(
-            array_keys($known->json('data')),
-            array_keys($unknown->json('data')),
-        );
-    }
-
-    public function test_an_enrolled_number_is_refused_at_submission_not_at_the_code_step(): void
-    {
-        Trainee::factory()->create(['branch_id' => $this->branch->id, 'phone' => '0799999999']);
-
-        $code = $this->codeFor('0799999999');
 
         $this->postJson('/api/v1/public/registrations', $this->form([
             'phone' => '0799999999',
-            'code' => $code,
         ]))->assertStatus(422);
 
         $this->assertSame(0, RegistrationRequest::count());
@@ -201,9 +158,7 @@ class SelfRegistrationTest extends TestCase
 
     public function test_an_applicant_can_follow_their_request_by_reference(): void
     {
-        $code = $this->codeFor('0791234567');
-
-        $reference = $this->postJson('/api/v1/public/registrations', $this->form(['code' => $code]))
+        $reference = $this->postJson('/api/v1/public/registrations', $this->form())
             ->assertCreated()
             ->json('data.reference');
 
@@ -225,10 +180,7 @@ class SelfRegistrationTest extends TestCase
 
     protected function submitted(): RegistrationRequest
     {
-        $code = $this->codeFor('0791234567');
-
-        $this->postJson('/api/v1/public/registrations', $this->form(['code' => $code]))
-            ->assertCreated();
+        $this->postJson('/api/v1/public/registrations', $this->form())->assertCreated();
 
         return RegistrationRequest::firstOrFail();
     }
@@ -358,11 +310,8 @@ class SelfRegistrationTest extends TestCase
 
     public function test_approval_without_a_branch_is_refused(): void
     {
-        $code = $this->codeFor('0791234567');
-
         // Submitted without choosing a branch.
         $this->postJson('/api/v1/public/registrations', $this->form([
-            'code' => $code,
             'branch_id' => null,
         ]))->assertCreated();
 

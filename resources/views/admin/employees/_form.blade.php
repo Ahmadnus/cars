@@ -76,6 +76,16 @@
             </div>
         </x-ui.card>
 
+        {{-- An employee's login reaches the dashboard, so unlike a trainee or
+             trainer it has to say which roles — what they may see is a decision,
+             not something their record implies. --}}
+        @unless ($employee)
+            <x-account.fields
+                :roles="$assignableRoles ?? []"
+                title="حساب الدخول للوحة التحكم"
+                hint="يدخل الموظف برقم هاتفه أو بريده الإلكتروني." />
+        @endunless
+
         <x-ui.card>
             <div class="flex flex-col gap-2">
                 <x-ui.button type="submit" size="lg">{{ $employee ? 'حفظ التعديلات' : 'إضافة الموظف' }}</x-ui.button>

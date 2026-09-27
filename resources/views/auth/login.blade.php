@@ -19,14 +19,16 @@
     <form method="POST" action="{{ route('login.store') }}" class="mt-6 space-y-4">
         @csrf
 
+        {{-- One field for both: accounts the office issues sign in by phone,
+             and type="email" would have the browser refuse a phone number. --}}
         <x-form.input
             name="email"
-            type="email"
-            label="البريد الإلكتروني"
+            type="text"
+            label="البريد الإلكتروني أو رقم الهاتف"
             required
             autofocus
             autocomplete="username"
-            placeholder="name@example.com"
+            placeholder="name@example.com أو 07XXXXXXXX"
             dir="ltr"
         />
 

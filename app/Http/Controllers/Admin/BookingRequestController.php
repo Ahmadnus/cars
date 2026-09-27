@@ -37,7 +37,7 @@ class BookingRequestController extends Controller
         return view('admin.booking-requests.index', [
             'requests' => BookingRequest::query()
                 ->visibleTo($request->user())
-                ->with(['trainee:id,uuid,full_name,trainee_number,phone', 'preferredTrainer:id,uuid,full_name', 'trainingSession', 'resolver:id,name'])
+                ->with(['trainee:id,uuid,full_name,trainee_number,phone', 'preferredTrainer:id,uuid,full_name', 'trainingSession', 'resolver:id,name', 'trainerDecider.trainer'])
                 ->when($request->filled('status'), fn ($q) => $q->where('status', $request->input('status')), fn ($q) => $q->pending())
                 ->when($request->filled('type'), fn ($q) => $q->where('type', $request->input('type')))
                 ->orderByDesc('created_at')
@@ -51,9 +51,26 @@ class BookingRequestController extends Controller
         ]);
     }
 
+    /**
+     * How many requests are still pending.
+     *
+     * Polled by the queue page so a request raised from a phone appears without a
+     * reload. Only a number: returning the rows would send every trainee's details
+     * on every tick, and the page already has them.
+     */
+    public function count(Request $request): \Illuminate\Http\JsonResponse
+    {
+        $this->authorize('viewAny', BookingRequest::class);
+
+        return response()->json([
+            'pending' => BookingRequest::query()->visibleTo($request->user())->pending()->count(),
+        ]);
+    }
+
     public function approve(Request $request, BookingRequest $bookingRequest): RedirectResponse
     {
         $this->authorize('resolve', $bookingRequest);
+        $this->assertTrainerHasAnswered($bookingRequest);
 
         $data = $request->validate([
             'trainer_id' => ['required', 'integer', Rule::exists('trainers', 'id')->whereNull('deleted_at')],
@@ -108,6 +125,29 @@ class BookingRequestController extends Controller
         return back()->with('toast', ['type' => 'success', 'message' => 'تمت الموافقة على الطلب وحجز الموعد.']);
     }
 
+    /**
+     * The office may not act before the trainer has answered.
+     *
+     * A reschedule is the trainer's diary. Applying one they have not agreed to
+     * would move a lesson out from under them, and the approval step would be
+     * decoration. Rejecting is always allowed — the office can close a request
+     * without waiting on anyone.
+     */
+    protected function assertTrainerHasAnswered(BookingRequest $bookingRequest): void
+    {
+        if ($bookingRequest->awaitingTrainer()) {
+            throw \App\Exceptions\BusinessRuleException::make(
+                'هذا الطلب بانتظار موافقة المدرب. لا يمكن تنفيذه قبل قراره.',
+            );
+        }
+
+        if ($bookingRequest->trainerRejected()) {
+            throw \App\Exceptions\BusinessRuleException::make(
+                'رفض المدرب هذا الطلب. يمكنك رفضه أو التواصل مع المدرب.',
+            );
+        }
+    }
+
     public function reject(Request $request, BookingRequest $bookingRequest): RedirectResponse
     {
         $this->authorize('resolve', $bookingRequest);
@@ -142,6 +182,8 @@ class BookingRequestController extends Controller
     /** Approve a cancellation request by cancelling the underlying lesson. */
     public function approveCancellation(Request $request, BookingRequest $bookingRequest): RedirectResponse
     {
+        $this->assertTrainerHasAnswered($bookingRequest);
+
         $this->authorize('resolve', $bookingRequest);
 
         abort_unless($bookingRequest->type === 'cancellation' && $bookingRequest->trainingSession, 422);

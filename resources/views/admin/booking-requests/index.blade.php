@@ -13,6 +13,12 @@
         description="الطلبات الواردة من تطبيق المتدربين بانتظار المراجعة."
     />
 
+    <x-ui.live-queue
+        :url="route('admin.booking-requests.count')"
+        :current="$pendingCount"
+        key="pending"
+        message="وصل :count طلب حجز أو تأجيل." />
+
     <x-ui.filters :action="route('admin.booking-requests.index')" :collapsible="false">
         <x-slot:fields>
             <x-form.select name="status" label="الحالة" :options="$statuses" :selected="request('status')" placeholder="المعلّقة فقط" />
@@ -27,6 +33,26 @@
                     <div class="mb-2 flex flex-wrap items-center gap-2">
                         <x-ui.badge tone="brand">{{ $types[$bookingRequest->type] ?? $bookingRequest->type }}</x-ui.badge>
                         <x-ui.status type="request" :value="$bookingRequest->status" />
+
+                        {{-- The trainer's say, named.
+
+                             A receptionist needs to know *who* agreed before
+                             moving a lesson, and that a request still waiting on
+                             the trainer is not theirs to apply yet. --}}
+                        @if ($bookingRequest->trainer_decision)
+                            <x-ui.badge :tone="match ($bookingRequest->trainer_decision) {
+                                'approved' => 'success',
+                                'rejected' => 'danger',
+                                default => 'warning',
+                            }">
+                                {{ $bookingRequest->trainerDecisionLabel() }}
+                                @if ($bookingRequest->trainerApproved() || $bookingRequest->trainerRejected())
+                                    · {{ $bookingRequest->trainerDecider?->trainer?->full_name
+                                        ?? $bookingRequest->trainerDecider?->name
+                                        ?? $bookingRequest->decidingTrainer()?->full_name }}
+                                @endif
+                            </x-ui.badge>
+                        @endif
                         <span class="text-xs text-ink-400">{{ $bookingRequest->created_at->diffForHumans() }}</span>
                     </div>
 
@@ -49,6 +75,13 @@
                             <div><dt class="inline">المدرب المفضل:</dt> <dd class="inline text-ink-700">{{ $bookingRequest->preferredTrainer->full_name }}</dd></div>
                         @endif
                     </dl>
+
+                    @if ($bookingRequest->trainer_note)
+                        <p class="mt-2 rounded-lg border border-ink-200 bg-ink-50 p-2.5 text-xs text-ink-600">
+                            <span class="font-semibold">ملاحظة المدرب:</span>
+                            {{ $bookingRequest->trainer_note }}
+                        </p>
+                    @endif
 
                     @if ($bookingRequest->trainee_note)
                         <p class="mt-2 rounded-lg bg-ink-50 p-2.5 text-sm text-ink-600">{{ $bookingRequest->trainee_note }}</p>

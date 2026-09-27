@@ -36,17 +36,21 @@ class LoginController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
+        // Either an email or a phone number, in one field. Accounts the office
+        // creates for trainees, trainers and employees sign in by phone — they
+        // have no email they would remember — and asking which kind it is would
+        // be a question the person at the keyboard cannot answer.
         $credentials = $request->validate([
-            'email' => ['required', 'string', 'email', 'max:255'],
+            'email' => ['required', 'string', 'max:255'],
             'password' => ['required', 'string'],
         ], [], [
-            'email' => 'البريد الإلكتروني',
+            'email' => 'البريد الإلكتروني أو رقم الهاتف',
             'password' => 'كلمة المرور',
         ]);
 
         $this->assertNotRateLimited($request);
 
-        $user = User::where('email', $credentials['email'])->first();
+        $user = $this->findByIdentifier($credentials['email']);
 
         if (! $user || ! Hash::check($credentials['password'], $user->password)) {
             $this->recordFailure($request, $user, $credentials['email']);
@@ -127,6 +131,38 @@ class LoginController extends Controller
     // ------------------------------------------------------------------
     // Throttling
     // ------------------------------------------------------------------
+
+    /**
+     * The account behind whatever was typed into the one login field.
+     *
+     * Phone numbers are compared on their last nine digits, which is what makes
+     * 0791234567, +962 79 123 4567 and 079-123-4567 the same number. Nine is
+     * the length of a local subscriber number here, so it is short enough to
+     * ignore a country code and long enough not to land on someone else.
+     */
+    protected function findByIdentifier(string $identifier): ?User
+    {
+        $identifier = trim($identifier);
+
+        if (str_contains($identifier, '@')) {
+            return User::where('email', $identifier)->first();
+        }
+
+        $digits = preg_replace('/\D/', '', $identifier) ?? '';
+
+        if (strlen($digits) < 9) {
+            return null;
+        }
+
+        $tail = substr($digits, -9);
+
+        return User::whereNotNull('phone')
+            ->whereRaw(
+                "RIGHT(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(phone, ' ', ''), '-', ''), '+', ''), '(', ''), ')', ''), 9) = ?",
+                [$tail],
+            )
+            ->first();
+    }
 
     protected function assertNotRateLimited(Request $request): void
     {

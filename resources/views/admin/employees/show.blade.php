@@ -142,6 +142,14 @@
             </dl>
         </x-ui.card>
 
+        <x-account.panel
+            :subject="$employee"
+            issue-route="admin.employees.account"
+            suspend-route="admin.employees.account.suspend"
+            :roles="$assignableRoles ?? []"
+            :can-manage="auth()->user()->hasPermission('employees.update')"
+            title="حساب لوحة التحكم" />
+
         @if ($employee->notes)
             <x-ui.card title="ملاحظات">
                 <p class="whitespace-pre-line text-sm text-ink-600">{{ $employee->notes }}</p>

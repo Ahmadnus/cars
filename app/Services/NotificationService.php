@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\BookingRequest;
 use App\Models\EmployeeAdvance;
 use App\Models\Payment;
 use App\Models\Payroll;
@@ -14,6 +15,7 @@ use App\Models\UtilityBill;
 use App\Notifications\SystemNotification;
 use App\Services\Notifications\ChannelGateway;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Notification;
 
 /**
@@ -151,6 +153,61 @@ class NotificationService
             ],
             $this->safeRoute('admin.booking-requests.index'),
             $level,
+        );
+    }
+
+    /**
+     * The trainer answered a reschedule, and the office needs to know.
+     *
+     * Names the trainer and the trainee in the title, because that is what makes
+     * it actionable: a receptionist reading "وافق المدرب عمر الزعبي على تأجيل حصة
+     * سارة" can move the lesson; one reading "تم تحديث طلب" has to open it first.
+     */
+    public function bookingRequestTrainerDecision(
+        BookingRequest $request,
+        User $trainerUser,
+        string $decision,
+    ): void {
+        $request->loadMissing('trainee', 'trainingSession');
+
+        $trainer = $trainerUser->trainer?->full_name ?? $trainerUser->name;
+        $trainee = $request->trainee?->full_name ?? 'المتدرب';
+
+        $what = $request->type === 'cancellation' ? 'إلغاء' : 'تأجيل';
+        $approved = $decision === BookingRequest::TRAINER_APPROVED;
+
+        $title = $approved
+            ? "وافق المدرب على {$what} حصة"
+            : "رفض المدرب {$what} حصة";
+
+        $body = $approved
+            ? "وافق المدرب {$trainer} على طلب {$what} حصة {$trainee}. بانتظار تنفيذ الإدارة."
+            : "رفض المدرب {$trainer} طلب {$what} حصة {$trainee}.";
+
+        if ($request->trainer_note) {
+            $body .= ' ملاحظته: '.Str::limit($request->trainer_note, 120);
+        }
+
+        $recipients = $this->staffFor($request->branch_id, 'booking_requests.manage');
+
+        // The trainee hears the outcome too — it is their lesson.
+        if ($request->trainee?->user) {
+            $recipients = $recipients->merge(collect([$request->trainee->user]));
+        }
+
+        $this->notify(
+            $recipients,
+            'booking_request.trainer_'.$decision,
+            $title,
+            $body,
+            [
+                'kind' => 'booking_request',
+                'request_uuid' => $request->uuid,
+                'trainer_decision' => $decision,
+                'trainer' => $trainer,
+            ],
+            $this->safeRoute('admin.booking-requests.index'),
+            $approved ? 'success' : 'warning',
         );
     }
 

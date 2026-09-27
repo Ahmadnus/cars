@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Http\Controllers\Concerns\IssuesLoginAccounts;
 use App\Http\Controllers\Controller;
 use App\Models\Branch;
 use App\Models\Trainer;
@@ -9,6 +10,7 @@ use App\Models\TrainerCompensationRule;
 use App\Models\TrainingSession;
 use App\Services\AuditLogger;
 use App\Services\NumberGenerator;
+use App\Services\AccountService;
 use App\Services\TrainerCompensationService;
 use App\Support\BranchContext;
 use Carbon\Carbon;
@@ -21,6 +23,8 @@ use Illuminate\View\View;
 
 class TrainerController extends Controller
 {
+    use IssuesLoginAccounts;
+
     public function __construct(
         protected BranchContext $branchContext,
         protected NumberGenerator $numbers,
@@ -85,6 +89,18 @@ class TrainerController extends Controller
 
             return $trainer;
         });
+
+        // The administration creates the trainer's login — trainers never
+        // register themselves. Done outside the transaction above so a failure
+        // to issue credentials does not discard the trainer record.
+        if ($request->boolean('create_login')) {
+            return $this->issueAccountFor(
+                $trainer,
+                $this->validateCredentials($request),
+                'admin.trainers.show',
+                'تم إضافة المدرب وإنشاء حساب الدخول.',
+            );
+        }
 
         return redirect()
             ->route('admin.trainers.show', $trainer)
@@ -227,6 +243,34 @@ class TrainerController extends Controller
             'branch_id' => 'الفرع',
             'status' => 'الحالة',
         ]);
+    }
+
+    /**
+     * Create the trainer's app login, or reset its password.
+     *
+     * One action for both: the office's need is the same either way — a
+     * password to read out — and a separate reset screen would only be a second
+     * place to get the permissions wrong.
+     */
+    public function issueAccount(Request $request, Trainer $trainer): RedirectResponse
+    {
+        $this->authorize('update', $trainer);
+
+        $data = $this->validateCredentials($request, $trainer->user_id);
+
+        return $this->issueAccountFor($trainer, $data, 'admin.trainers.show');
+    }
+
+    /** Disable the login without touching the trainer's records. */
+    public function suspendAccount(Trainer $trainer, AccountService $accounts): RedirectResponse
+    {
+        $this->authorize('update', $trainer);
+
+        $accounts->suspend($trainer);
+
+        return redirect()
+            ->route('admin.trainers.show', $trainer)
+            ->with('toast', ['type' => 'success', 'message' => 'تم تعطيل حساب المدرب.']);
     }
 
     /** Completed lessons and training minutes for the current month. */

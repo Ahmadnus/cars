@@ -12,6 +12,7 @@ use App\Http\Controllers\Api\V1\RegistrationReviewController;
 use App\Http\Controllers\Api\V1\OtpController;
 use App\Http\Controllers\Api\V1\TraineeController;
 use App\Http\Controllers\Api\V1\TrainerController;
+use App\Http\Controllers\Api\V1\TrainerDecisionController;
 use App\Http\Controllers\Api\V1\TrainerSelfController;
 use App\Http\Controllers\Api\V1\TrainingSessionController;
 use Illuminate\Http\Request;
@@ -60,11 +61,14 @@ Route::prefix('public/registrations')->name('public.registrations.')->group(func
     Route::get('options', [PublicRegistrationController::class, 'options'])
         ->middleware('throttle:30,1')->name('options');
 
-    Route::post('request-code', [PublicRegistrationController::class, 'requestCode'])
-        ->middleware('throttle:5,1')->name('request-code');
-
+    /*
+     | Applying needs no passcode: staff read every request before it becomes
+     | anything. The throttle is the protection instead — tighter than the old
+     | one, since without a code this is the only thing between the queue and a
+     | script.
+     */
     Route::post('/', [PublicRegistrationController::class, 'store'])
-        ->middleware('throttle:5,1')->name('store');
+        ->middleware('throttle:3,1')->name('store');
 
     // The reference is the credential, so guessing is rate limited too.
     Route::get('{reference}', [PublicRegistrationController::class, 'status'])
@@ -256,6 +260,20 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
         // useless to anyone outside the conversation.
         Route::get('attachments/{message}', [ChatController::class, 'attachment'])
             ->name('attachment');
+    });
+
+    /*
+     | Reschedule and cancellation requests waiting on the signed-in trainer.
+     |
+     | No `permission:` middleware: answering for your own diary is not a
+     | center-wide capability, and `appointments.cancel` would let a trainer
+     | cancel anyone's lesson. The service checks the request belongs to this
+     | trainer's own lessons.
+     */
+    Route::prefix('me/decisions')->name('me.decisions.')->group(function () {
+        Route::get('/', [TrainerDecisionController::class, 'index'])->name('index');
+        Route::post('{bookingRequest}/approve', [TrainerDecisionController::class, 'approve'])->name('approve');
+        Route::post('{bookingRequest}/reject', [TrainerDecisionController::class, 'reject'])->name('reject');
     });
 
     // -------------------------------------------------- registration review

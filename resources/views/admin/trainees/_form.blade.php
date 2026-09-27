@@ -78,6 +78,14 @@
             <input type="hidden" name="branch_id" value="{{ array_key_first($branches) }}">
         @endif
 
+        {{-- A trainee registered at the desk should leave able to sign in, so
+             the login is offered here rather than only after they apply. --}}
+        @unless ($trainee)
+            <x-account.fields
+                title="حساب الدخول للتطبيق"
+                hint="يدخل المتدرب على التطبيق برقم هاتفه. تظهر كلمة المرور مرة واحدة بعد الحفظ." />
+        @endunless
+
         <x-ui.card>
             <div class="flex flex-col gap-2">
                 <x-ui.button type="submit" size="lg">{{ $trainee ? 'حفظ التعديلات' : 'تسجيل المتدرب' }}</x-ui.button>

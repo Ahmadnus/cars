@@ -59,8 +59,16 @@ class BookingRequestController extends ApiController
         $data = $request->validate([
             'type' => ['required', 'in:booking,reschedule,cancellation'],
             'training_session_id' => ['nullable', 'string', 'exists:training_sessions,uuid'],
-            'requested_date' => ['nullable', 'date', 'after_or_equal:today'],
-            'requested_start_time' => ['nullable', 'date_format:H:i'],
+            // A reschedule has to say when to. The apps use date and time pickers,
+            // so the format is fixed rather than parsed out of free text, and a
+            // request with no new slot is refused here as well as in the UI —
+            // the office cannot act on "أرجو التأجيل" alone.
+            'requested_date' => [
+                'required_if:type,reschedule', 'nullable', 'date', 'after_or_equal:today',
+            ],
+            'requested_start_time' => [
+                'required_if:type,reschedule', 'nullable', 'date_format:H:i',
+            ],
             'preferred_trainer_id' => ['nullable', 'string', 'exists:trainers,uuid'],
             'trainee_note' => ['nullable', 'string', 'max:500'],
         ], [], [
@@ -108,6 +116,10 @@ class BookingRequestController extends ApiController
             // Tell the staff who can act on it. The service names the type, so a
             // receptionist sees "طلب تأجيل حصة" rather than a generic "طلب جديد"
             // and can judge the urgency without opening it.
+            // A reschedule or cancellation is the trainer's diary first: mark it
+            // as waiting on them so the office does not apply it prematurely.
+            app(\App\Services\BookingDecisionService::class)->markAwaitingTrainer($bookingRequest);
+
             $this->notifications->bookingRequestRaised($bookingRequest);
 
             // And put it on the dashboard queue without a refresh.

@@ -5,7 +5,6 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Resources\RegistrationRequestResource;
 use App\Models\Branch;
 use App\Models\RegistrationRequest;
-use App\Services\OtpService;
 use App\Services\RegistrationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -27,10 +26,8 @@ use Illuminate\Http\Request;
  */
 class PublicRegistrationController extends ApiController
 {
-    public function __construct(
-        protected RegistrationService $registrations,
-        protected OtpService $otp,
-    ) {
+    public function __construct(protected RegistrationService $registrations)
+    {
     }
 
     /** Branches an applicant can choose, and the license types on offer. */
@@ -62,50 +59,16 @@ class PublicRegistrationController extends ApiController
     }
 
     /**
-     * Send a passcode to the applicant's phone.
+     * Submit an application.
      *
-     * A separate purpose from login, so a code issued to join cannot be replayed
-     * to sign in to an existing account, or the reverse.
+     * Deliberately unauthenticated and without a passcode: the barrier the center
+     * wants is a member of staff reading it, not a code. Nothing here reaches the
+     * training records — staff approval is the only path — and the number stays
+     * marked unverified until someone confirms it by phone.
      */
-    public function requestCode(Request $request): JsonResponse
-    {
-        $data = $request->validate([
-            'phone' => ['required', 'string', 'min:9', 'max:20'],
-        ], [], ['phone' => 'رقم الهاتف']);
-
-        $phone = $this->otp->normalisePhone($data['phone']);
-
-        $wait = $this->otp->cooldownFor($phone, 'registration');
-
-        if ($wait > 0) {
-            return $this->failed(
-                'تم إرسال رمز حديثاً. حاول بعد '.$wait.' ثانية.',
-                ['phone' => ['انتظر قليلاً قبل طلب رمز جديد.']],
-                429,
-            );
-        }
-
-        if ($this->otp->issuedLastHour($phone, 'registration') >= (int) config('otp.hourly_limit', 5)) {
-            return $this->failed(
-                'تم تجاوز عدد الرموز المسموح بها في الساعة. حاول لاحقاً.',
-                status: 429,
-            );
-        }
-
-        $result = $this->otp->requestForPhone($phone, $request->ip(), 'registration');
-
-        return $this->ok([
-            'expires_in' => $result['expires_in'],
-            'channel' => $result['channel'],
-            'code' => $result['code'],
-        ], 'تم إرسال رمز التحقق إلى رقم هاتفك.');
-    }
-
-    /** Submit the request, proving the phone with the passcode just sent. */
     public function store(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'code' => ['required', 'string', 'min:4', 'max:8'],
             'full_name' => ['required', 'string', 'min:3', 'max:255'],
             'phone' => ['required', 'string', 'min:9', 'max:20'],
             'secondary_phone' => ['nullable', 'string', 'max:20'],
@@ -118,7 +81,6 @@ class PublicRegistrationController extends ApiController
             'branch_id' => ['nullable', 'string', 'exists:branches,uuid'],
             'notes' => ['nullable', 'string', 'max:1000'],
         ], [], [
-            'code' => 'رمز التحقق',
             'full_name' => 'الاسم الكامل',
             'phone' => 'رقم الهاتف',
             'birth_date' => 'تاريخ الميلاد',
@@ -128,11 +90,7 @@ class PublicRegistrationController extends ApiController
             $data['branch_id'] = Branch::where('uuid', $data['branch_id'])->value('id');
         }
 
-        $registration = $this->registrations->submit(
-            $data,
-            (string) $data['code'],
-            $request->ip(),
-        );
+        $registration = $this->registrations->submit($data, $request->ip());
 
         return $this->created([
             'reference' => $registration->reference,

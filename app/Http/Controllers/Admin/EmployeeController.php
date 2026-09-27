@@ -2,9 +2,11 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Http\Controllers\Concerns\IssuesLoginAccounts;
 use App\Http\Controllers\Controller;
 use App\Models\Branch;
 use App\Models\Employee;
+use App\Services\AccountService;
 use App\Services\AuditLogger;
 use App\Services\NumberGenerator;
 use App\Support\BranchContext;
@@ -17,6 +19,8 @@ use Illuminate\View\View;
 
 class EmployeeController extends Controller
 {
+    use IssuesLoginAccounts;
+
     public function __construct(
         protected BranchContext $branchContext,
         protected NumberGenerator $numbers,
@@ -60,6 +64,9 @@ class EmployeeController extends Controller
 
         return view('admin.employees.create', [
             'branches' => $this->branchOptions($request),
+            // An employee's login needs a role chosen: "employee" is not one
+            // job, and a receptionist and an accountant see different money.
+            'assignableRoles' => $this->assignableRoles($request),
             'positions' => self::positions(),
             'statuses' => self::statuses(),
         ]);
@@ -82,16 +89,61 @@ class EmployeeController extends Controller
             return $employee;
         });
 
+        if ($request->boolean('create_login')) {
+            return $this->issueAccountFor(
+                $employee,
+                $this->validateCredentials($request, null, rolesRequired: true),
+                'admin.employees.show',
+                'تم إضافة الموظف وإنشاء حساب الدخول.',
+            );
+        }
+
         return redirect()
             ->route('admin.employees.show', $employee)
             ->with('toast', ['type' => 'success', 'message' => 'تم إضافة الموظف بنجاح.']);
+    }
+
+    /**
+     * Create the employee's dashboard login, or reset its password.
+     *
+     * The roles are required here, unlike a trainee or trainer: what an
+     * employee may see is a decision, not something their record implies.
+     */
+    public function issueAccount(Request $request, Employee $employee): RedirectResponse
+    {
+        $this->authorize('update', $employee);
+
+        $data = $this->validateCredentials(
+            $request,
+            $employee->user_id,
+            rolesRequired: ! $employee->user_id,
+        );
+
+        return $this->issueAccountFor($employee, $data, 'admin.employees.show');
+    }
+
+    /** Close the login. Payroll, advances and the employment record stay. */
+    public function suspendAccount(Employee $employee, AccountService $accounts): RedirectResponse
+    {
+        $this->authorize('update', $employee);
+
+        $accounts->suspend($employee);
+
+        return redirect()
+            ->route('admin.employees.show', $employee)
+            ->with('toast', ['type' => 'success', 'message' => 'تم تعطيل حساب الموظف.']);
     }
 
     public function show(Request $request, Employee $employee): View
     {
         $this->authorize('view', $employee);
 
-        $data = ['employee' => $employee->load(['branch', 'user'])];
+        $data = [
+            'employee' => $employee->load(['branch', 'user.roles']),
+            'assignableRoles' => $request->user()->hasPermission('employees.update')
+                ? $this->assignableRoles($request)
+                : [],
+        ];
 
         if ($request->user()->hasPermission('payroll.view')) {
             $data['payrolls'] = $employee->payrolls()->orderByDesc('period')->limit(12)->get();

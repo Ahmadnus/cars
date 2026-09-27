@@ -199,19 +199,14 @@ class NotificationReachTest extends TestCase
     {
         Notification::fake();
 
-        config(['otp.expose_code' => true, 'otp.enable_fixed_codes' => false]);
-
         $receptionist = $this->userWithRole('receptionist');
 
         // A supervisor may read the queue but not decide, so is not notified.
         $supervisor = $this->userWithRole('training_supervisor');
 
-        $code = $this->postJson('/api/v1/public/registrations/request-code', [
-            'phone' => '0791112223',
-        ])->assertOk()->json('data.code');
-
+        // No passcode: the applicant is a stranger, and staff reading the request
+        // is the barrier. What matters here is that the right staff are told.
         $this->postJson('/api/v1/public/registrations', [
-            'code' => $code,
             'full_name' => 'طالب جديد للاختبار',
             'phone' => '0791112223',
             'branch_id' => $this->branch->uuid,

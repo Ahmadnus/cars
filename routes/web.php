@@ -157,6 +157,9 @@ Route::middleware(['auth', 'active'])->name('admin.')->group(function () {
 
     Route::middleware('permission:booking_requests.manage')->prefix('booking-requests')->name('booking-requests.')->group(function () {
         Route::get('/', [BookingRequestController::class, 'index'])->name('index');
+
+        // Polled by the queue page to notice an arrival without a reload.
+        Route::get('count', [BookingRequestController::class, 'count'])->name('count');
         Route::post('/{bookingRequest}/approve', [BookingRequestController::class, 'approve'])->name('approve');
         Route::post('/{bookingRequest}/reject', [BookingRequestController::class, 'reject'])->name('reject');
         Route::post('/{bookingRequest}/cancel', [BookingRequestController::class, 'approveCancellation'])->name('cancel');
@@ -178,6 +181,14 @@ Route::middleware(['auth', 'active'])->name('admin.')->group(function () {
     Route::middleware('permission:trainees.update')->group(function () {
         Route::get('/trainees/{trainee}/edit', [TraineeController::class, 'edit'])->name('trainees.edit');
         Route::patch('/trainees/{trainee}', [TraineeController::class, 'update'])->name('trainees.update');
+
+        // The trainee's app login. Behind trainees.update rather than
+        // users.create: it administers one trainee's own access and cannot
+        // reach any other account.
+        Route::post('/trainees/{trainee}/account', [TraineeController::class, 'issueAccount'])
+            ->name('trainees.account');
+        Route::post('/trainees/{trainee}/account/suspend', [TraineeController::class, 'suspendAccount'])
+            ->name('trainees.account.suspend');
         Route::post('/trainees/{trainee}/notes', [TraineeNoteController::class, 'store'])->name('trainees.notes.store');
         Route::delete('/trainee-notes/{note}', [TraineeNoteController::class, 'destroy'])->name('trainees.notes.destroy');
     });
@@ -230,6 +241,14 @@ Route::middleware(['auth', 'active'])->name('admin.')->group(function () {
     Route::middleware('permission:trainers.update')->group(function () {
         Route::get('/trainers/{trainer}/edit', [TrainerController::class, 'edit'])->name('trainers.edit');
         Route::patch('/trainers/{trainer}', [TrainerController::class, 'update'])->name('trainers.update');
+
+        // The trainer's app login. Behind trainers.update rather than
+        // users.create: issuing it changes one staff record the holder of this
+        // permission already administers, and it cannot mint any other account.
+        Route::post('/trainers/{trainer}/account', [TrainerController::class, 'issueAccount'])
+            ->name('trainers.account');
+        Route::post('/trainers/{trainer}/account/suspend', [TrainerController::class, 'suspendAccount'])
+            ->name('trainers.account.suspend');
     });
 
     Route::delete('/trainers/{trainer}', [TrainerController::class, 'destroy'])
@@ -265,6 +284,11 @@ Route::middleware(['auth', 'active'])->name('admin.')->group(function () {
         Route::post('/employees', [EmployeeController::class, 'store'])->name('employees.store');
         Route::get('/employees/{employee}/edit', [EmployeeController::class, 'edit'])->name('employees.edit');
         Route::patch('/employees/{employee}', [EmployeeController::class, 'update'])->name('employees.update');
+
+        Route::post('/employees/{employee}/account', [EmployeeController::class, 'issueAccount'])
+            ->name('employees.account');
+        Route::post('/employees/{employee}/account/suspend', [EmployeeController::class, 'suspendAccount'])
+            ->name('employees.account.suspend');
         Route::delete('/employees/{employee}', [EmployeeController::class, 'destroy'])->name('employees.destroy');
     });
 
