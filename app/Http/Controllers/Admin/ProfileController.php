@@ -56,9 +56,20 @@ class ProfileController extends Controller
             'password' => 'كلمة المرور الجديدة',
         ]);
 
-        $request->user()->update(['password' => Hash::make($data['password'])]);
+        $user = $request->user();
 
-        return back()->with('toast', ['type' => 'success', 'message' => 'تم تغيير كلمة المرور.']);
+        $user->update(['password' => Hash::make($data['password'])]);
+
+        // Anyone signed in on a phone with the old password keeps working
+        // otherwise — and an admin changing their password because someone else
+        // knew it would leave that person's app session alive. The current
+        // browser session is untouched: they stay signed in here.
+        $user->tokens()->delete();
+
+        return back()->with('toast', [
+            'type' => 'success',
+            'message' => 'تم تغيير كلمة المرور. تم إنهاء الجلسات على التطبيقات.',
+        ]);
     }
 
     /** Revoke a mobile app token the user no longer recognises. */

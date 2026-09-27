@@ -124,6 +124,13 @@
                 <x-ui.icon name="user-cog" class="size-4 text-ink-400" /> الملف الشخصي
             </a>
 
+            {{-- Named outright: "الملف الشخصي" is where the password lives, but
+                 nobody opening a menu to change a password reads it that way. --}}
+            <a href="{{ route('admin.profile.edit') }}#password"
+               class="flex items-center gap-2 px-3 py-2 text-sm text-ink-700 hover:bg-ink-50">
+                <x-ui.icon name="key" class="size-4 text-ink-400" /> تغيير كلمة المرور
+            </a>
+
             <form method="POST" action="{{ route('logout') }}">
                 @csrf
                 <button type="submit" class="flex w-full items-center gap-2 px-3 py-2 text-sm text-rose-600 hover:bg-rose-50">
