@@ -20,6 +20,7 @@
             :subject="$employee"
             issue-route="admin.employees.account"
             show-route="admin.employees.show"
+            :needs-roles="$assignableRoles ?? ['roles-required']"
             :can-manage="auth()->user()->hasPermission('employees.update')" />
     </div>
 

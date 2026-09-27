@@ -142,6 +142,30 @@ class AccountUiSmokeTest extends TestCase
         }
     }
 
+    /**
+     * The fields show even when the record has no login yet.
+     *
+     * The card used to replace them with "there is no account" and a link
+     * somewhere else, which is how the whole feature read as missing.
+     */
+    public function test_the_reset_fields_show_without_an_existing_account(): void
+    {
+        $trainee = Trainee::factory()->create(['branch_id' => $this->branch->id]);
+        $trainer = Trainer::factory()->create(['branch_id' => $this->branch->id]);
+
+        $this->assertNull($trainee->user_id);
+
+        foreach ([
+            route('admin.trainees.edit', $trainee),
+            route('admin.trainers.edit', $trainer),
+        ] as $url) {
+            $this->get($url)
+                ->assertOk()
+                ->assertSee('login_password_confirmation', false)
+                ->assertDontSee('لا يوجد حساب دخول لهذا السجل', false);
+        }
+    }
+
     public function test_the_person_pages_show_the_account_panel(): void
     {
         $trainee = Trainee::factory()->create(['branch_id' => $this->branch->id]);

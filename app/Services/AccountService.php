@@ -86,10 +86,39 @@ class AccountService
                 return;
             }
 
-            // Both are unique on users, and a collision mid-transaction would
-            // surface as a database error. Name the account that holds it
-            // instead, so the office can correct the record or link it.
-            $this->assertPhoneFree($phone);
+            // An account may already exist on this number without being linked
+            // to the record — created before the link existed, or by hand. That
+            // is this person, so it is adopted and its password reset, rather
+            // than refusing and leaving staff with a record they cannot give a
+            // password to. Only an account that belongs to *another* record is a
+            // real conflict.
+            $existing = $this->unlinkedUserFor($phone, $subject);
+
+            if ($existing) {
+                $existing->password = Hash::make($password);
+                $existing->status = 'active';
+
+                if ($email && $email !== $existing->email) {
+                    $this->assertEmailFree($email, $existing->id);
+                    $existing->email = $email;
+                }
+
+                $existing->save();
+
+                $this->applyRoles($existing, $subject, $roleIds);
+                $existing->branches()->syncWithoutDetaching([$subject->branch_id]);
+
+                $subject->forceFill(['user_id' => $existing->id])->save();
+
+                $this->audit->log(
+                    action: $this->key($subject).'.account_linked',
+                    subject: $subject,
+                    after: ['user_id' => $existing->id, 'phone' => $existing->phone],
+                    description: 'ربط حساب دخول موجود بنفس رقم الهاتف وتعيين كلمة مرور جديدة',
+                );
+
+                return;
+            }
 
             if ($email) {
                 $this->assertEmailFree($email);
@@ -193,20 +222,52 @@ class AccountService
         }
     }
 
-    protected function assertPhoneFree(?string $phone): void
+    /**
+     * An account on this number that no other record has claimed.
+     *
+     * Returned so it can be adopted: the number is the login name here, so a
+     * user row carrying it is this person unless some other trainee, trainer or
+     * employee already points at it. That case is a genuine conflict — two
+     * people cannot share a login — and is refused by name so the office can
+     * fix whichever record has the wrong number.
+     */
+    protected function unlinkedUserFor(?string $phone, Model $subject): ?User
     {
         if (! $phone) {
             throw BusinessRuleException::make('أضف رقم هاتف للسجل أولاً — هو اسم الدخول.');
         }
 
-        $clash = User::where('phone', $phone)->first();
+        $candidate = User::where('phone', $phone)->first();
 
-        if ($clash) {
+        if (! $candidate) {
+            return null;
+        }
+
+        $owner = Trainee::where('user_id', $candidate->id)->first()
+            ?? Trainer::where('user_id', $candidate->id)->first()
+            ?? Employee::where('user_id', $candidate->id)->first();
+
+        if ($owner && ! ($owner::class === $subject::class && $owner->getKey() === $subject->getKey())) {
             throw BusinessRuleException::make(
-                'رقم الهاتف مستخدم في حساب آخر ('.$clash->name.'). عدّل الرقم أو اربط السجل بذلك الحساب.',
-                ['phone' => ['رقم الهاتف مستخدم في حساب آخر.']],
+                'رقم الهاتف مستخدم في حساب «'.$owner->full_name.'». عدّل الرقم في أحد السجلين.',
+                ['phone' => ['رقم الهاتف مستخدم في سجل آخر.']],
             );
         }
+
+        // A staff account is never adopted, even unlinked. Attaching a trainee
+        // record to a receptionist's login would give the trainee that
+        // receptionist's roles — the record gains the account, the account keeps
+        // its permissions. Whoever owns the number has to correct it.
+        $roles = $candidate->roles->pluck('name');
+
+        if ($candidate->isSuperAdmin() || $roles->diff(['trainee', 'trainer'])->isNotEmpty()) {
+            throw BusinessRuleException::make(
+                'رقم الهاتف مستخدم في حساب موظف ('.$candidate->name.'). عدّل الرقم أو راجع حسابات المستخدمين.',
+                ['phone' => ['رقم الهاتف مستخدم في حساب موظف.']],
+            );
+        }
+
+        return $candidate;
     }
 
     protected function assertEmailFree(string $email, ?int $exceptUserId = null): void

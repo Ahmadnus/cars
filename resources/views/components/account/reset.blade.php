@@ -4,6 +4,10 @@
     'issueRoute',
     'showRoute' => null,
     'canManage' => true,
+
+    // Roles this record's first account would need. Non-empty only for an
+    // employee, where "which roles" cannot be answered by the record itself.
+    'needsRoles' => [],
 ])
 
 {{-- Just a new password, twice.
@@ -26,10 +30,9 @@
             :name="$subject->full_name" />
     @elseif (! $canManage)
         <p class="text-xs text-ink-500">لا تملك صلاحية تعديل كلمة المرور لهذا السجل.</p>
-    @elseif (! $user)
-        {{-- Nothing to reset yet. Creating the first account asks for more than
-             a password — roles for an employee, a login name — so it is done
-             where those questions have room. --}}
+    @elseif (! $user && count($needsRoles ?? []))
+        {{-- Only an employee reaches this: their first account has to say which
+             roles, and that question does not belong on an edit form. --}}
         <p class="text-xs text-ink-500">
             لا يوجد حساب دخول لهذا السجل بعد.
             @if ($showRoute)
@@ -57,10 +60,17 @@
                 autocomplete="new-password"
                 dir="ltr" />
 
-            <x-ui.button type="submit" size="sm" class="w-full">إعادة تعيين كلمة المرور</x-ui.button>
+            <x-ui.button type="submit" size="sm" class="w-full">
+                {{ $user ? 'إعادة تعيين كلمة المرور' : 'تعيين كلمة المرور' }}
+            </x-ui.button>
 
             <p class="text-[11px] leading-relaxed text-ink-400">
-                تظهر كلمة المرور مرة واحدة بعد الحفظ لتسليمها لصاحبها، ويُسجَّل خروجه من كل الأجهزة.
+                تظهر كلمة المرور مرة واحدة بعد الحفظ لتسليمها لصاحبها.
+                @if ($user)
+                    ويُسجَّل خروجه من كل الأجهزة.
+                @else
+                    يدخل برقم هاتفه: <span class="font-mono" dir="ltr">{{ $subject->phone }}</span>
+                @endif
             </p>
         </form>
     @endif

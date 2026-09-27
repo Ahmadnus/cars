@@ -349,6 +349,134 @@ class AccountIssuingTest extends TestCase
         $this->assertNull($trainee->fresh()->user_id);
     }
 
+    /**
+     * Setting a password on a record that has no login yet just works.
+     *
+     * This is the case the edit page has to handle: staff open a trainee, type a
+     * password, and expect them to be able to sign in. Refusing because there is
+     * no account yet would be a distinction only the database cares about.
+     */
+    public function test_setting_a_password_on_a_record_with_no_account_creates_one(): void
+    {
+        $trainee = Trainee::factory()->create([
+            'branch_id' => $this->branch->id,
+            'phone' => '0791110017',
+        ]);
+
+        $this->assertNull($trainee->user_id);
+
+        $this->actingAsUser($this->admin());
+
+        $this->post(route('admin.trainees.account', $trainee), [
+            'login_password' => 'Markaz26',
+            'login_password_confirmation' => 'Markaz26',
+        ])->assertSessionHasNoErrors();
+
+        $trainee->refresh();
+        $this->assertNotNull($trainee->user_id);
+
+        $this->flushSession();
+        app('auth')->forgetGuards();
+
+        $this->postJson('/api/v1/auth/login', [
+            'phone' => '0791110017',
+            'password' => 'Markaz26',
+            'device_name' => 'app',
+        ])->assertOk();
+    }
+
+    /**
+     * An account already on that number, belonging to nobody, is adopted.
+     *
+     * This is what used to fail with "the phone is used by another account": a
+     * login created before the record was linked — by the old join flow, or by
+     * hand — left staff with a trainee they could not give a password to. The
+     * number is the login name here, so that account is this person.
+     */
+    public function test_an_unlinked_account_on_the_same_number_is_adopted(): void
+    {
+        $orphan = User::factory()->create([
+            'branch_id' => $this->branch->id,
+            'phone' => '0791110018',
+            'status' => 'inactive',
+        ]);
+
+        $trainee = Trainee::factory()->create([
+            'branch_id' => $this->branch->id,
+            'phone' => '0791110018',
+        ]);
+
+        $this->actingAsUser($this->admin());
+
+        $this->post(route('admin.trainees.account', $trainee), [
+            'login_password' => 'Markaz26',
+            'login_password_confirmation' => 'Markaz26',
+        ])->assertSessionHasNoErrors();
+
+        $trainee->refresh();
+
+        $this->assertSame($orphan->id, $trainee->user_id, 'the existing login was adopted, not duplicated');
+        $this->assertSame(1, User::where('phone', '0791110018')->count());
+
+        $orphan->refresh();
+        $this->assertSame('active', $orphan->status, 'an inactive orphan is reactivated');
+        $this->assertTrue($orphan->hasRole('trainee'));
+        $this->assertTrue(Hash::check('Markaz26', $orphan->password));
+    }
+
+    /**
+     * A staff account on that number is never adopted.
+     *
+     * Attaching a trainee record to a receptionist's login would give the
+     * trainee that receptionist's permissions — the record gains an account and
+     * the account keeps its roles. Refused by name so the office can fix it.
+     */
+    public function test_a_staff_account_on_the_same_number_is_not_adopted(): void
+    {
+        $staff = $this->userWithRole('receptionist', ['phone' => '0791110019']);
+
+        $trainee = Trainee::factory()->create([
+            'branch_id' => $this->branch->id,
+            'phone' => '0791110019',
+        ]);
+
+        $this->actingAsUser($this->admin());
+
+        $this->post(route('admin.trainees.account', $trainee), [
+            'login_password' => 'Markaz26',
+            'login_password_confirmation' => 'Markaz26',
+        ])->assertSessionHasErrors();
+
+        $this->assertNull($trainee->fresh()->user_id);
+        $this->assertFalse($staff->fresh()->hasRole('trainee'));
+        $this->assertTrue(Hash::check('secret-password', $staff->fresh()->password));
+    }
+
+    /** A login another trainee already uses stays theirs. */
+    public function test_an_account_owned_by_another_record_is_refused(): void
+    {
+        $other = Trainee::factory()->create([
+            'branch_id' => $this->branch->id,
+            'phone' => '0791110020',
+        ]);
+
+        $this->actingAsUser($this->admin());
+        $this->post(route('admin.trainees.account', $other))->assertSessionHasNoErrors();
+        $this->flushSession();
+
+        // A second record entered with the same number by mistake.
+        $duplicate = Trainee::factory()->create([
+            'branch_id' => $this->branch->id,
+            'phone' => '0791110020',
+            'full_name' => 'سجل مكرر',
+        ]);
+
+        $this->post(route('admin.trainees.account', $duplicate))->assertSessionHasErrors();
+
+        $this->assertNull($duplicate->fresh()->user_id);
+        $this->assertNotNull($other->fresh()->user_id);
+    }
+
     // ------------------------------------------------------ creating in one go
 
     public function test_a_trainee_can_be_registered_with_a_login_in_one_step(): void
