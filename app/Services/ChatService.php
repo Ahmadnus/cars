@@ -8,6 +8,7 @@ use App\Exceptions\BusinessRuleException;
 use App\Models\Conversation;
 use App\Models\Message;
 use App\Models\Trainee;
+use App\Models\Trainer;
 use App\Models\User;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
@@ -84,6 +85,34 @@ class ChatService
 
         return Conversation::firstOrCreate(
             ['trainee_id' => $trainee->id, 'trainer_id' => $trainee->trainer_id],
+            ['branch_id' => $trainee->branch_id],
+        );
+    }
+
+    /**
+     * A thread between a trainee and any trainer at their own branch.
+     *
+     * The center asked for this: a trainee with a question often needs whoever is
+     * free rather than the trainer their file names, and being able to reach only
+     * one person means the question goes unanswered while that person is driving.
+     *
+     * The branch is the boundary, not the assignment. A trainer at another branch
+     * is a stranger who holds no lessons of this trainee's, and an archived or
+     * inactive trainer cannot answer at all — opening a thread to either would be
+     * a message nobody reads.
+     */
+    public function conversationBetween(Trainee $trainee, Trainer $trainer): Conversation
+    {
+        if ($trainer->branch_id !== $trainee->branch_id) {
+            throw BusinessRuleException::make('هذا المدرب ليس في فرعك.');
+        }
+
+        if ($trainer->status !== 'active') {
+            throw BusinessRuleException::make('هذا المدرب غير متاح حالياً.');
+        }
+
+        return Conversation::firstOrCreate(
+            ['trainee_id' => $trainee->id, 'trainer_id' => $trainer->id],
             ['branch_id' => $trainee->branch_id],
         );
     }

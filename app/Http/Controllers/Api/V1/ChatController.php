@@ -56,6 +56,33 @@ class ChatController extends ApiController
     }
 
     /**
+     * Open (or reopen) a thread with a named trainer.
+     *
+     * A trainee may talk to any active trainer at their own branch, not only the
+     * one their file names: a question often needs whoever is free. The service
+     * enforces the branch and the trainer's status, so a guessed id reaches
+     * nothing.
+     */
+    public function open(Request $request): JsonResponse
+    {
+        $trainee = $request->user()->trainee;
+
+        if (! $trainee) {
+            return $this->failed('هذا الحساب غير مرتبط بملف متدرب.', status: 403);
+        }
+
+        $data = $request->validate([
+            'trainer_id' => ['required', 'string', 'exists:trainers,uuid'],
+        ], [], ['trainer_id' => 'المدرب']);
+
+        $trainer = \App\Models\Trainer::where('uuid', $data['trainer_id'])->firstOrFail();
+
+        $conversation = $this->chat->conversationBetween($trainee, $trainer);
+
+        return $this->ok(new ConversationResource($conversation->load('trainer', 'trainee')));
+    }
+
+    /**
      * A page of messages, newest first.
      *
      * `before` pages backwards through history by id rather than by page

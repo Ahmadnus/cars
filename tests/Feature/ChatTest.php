@@ -74,6 +74,109 @@ class ChatTest extends TestCase
         $this->assertSame(1, Conversation::count());
     }
 
+    // ------------------------------------------- talking to any trainer
+
+    /**
+     * A trainee may open a thread with any active trainer at their branch.
+     *
+     * The center asked for it: a question often needs whoever is free, not the
+     * one trainer the file names — being able to reach only that person means the
+     * question waits while they are out driving.
+     */
+    public function test_a_trainee_can_open_a_thread_with_another_trainer(): void
+    {
+        $other = Trainer::factory()->create([
+            'branch_id' => $this->branch->id,
+            'full_name' => 'مدرب آخر',
+        ]);
+
+        Sanctum::actingAs($this->traineeUser);
+
+        $response = $this->postJson('/api/v1/chat/conversations/open', [
+            'trainer_id' => $other->uuid,
+        ])->assertOk();
+
+        $this->assertSame('مدرب آخر', $response->json('data.other_party.name'));
+
+        // And it is a thread of its own, not a rename of the assigned one.
+        $this->assertSame(1, Conversation::where('trainer_id', $other->id)->count());
+
+        // Opening it again returns the same thread rather than a second one.
+        $again = $this->postJson('/api/v1/chat/conversations/open', [
+            'trainer_id' => $other->uuid,
+        ])->assertOk();
+
+        $this->assertSame($response->json('data.id'), $again->json('data.id'));
+        $this->assertSame(1, Conversation::where('trainer_id', $other->id)->count());
+    }
+
+    public function test_the_new_thread_can_actually_be_written_to(): void
+    {
+        $other = Trainer::factory()->create(['branch_id' => $this->branch->id]);
+        $otherUser = $this->userWithRole('trainer');
+        $other->forceFill(['user_id' => $otherUser->id])->save();
+
+        Sanctum::actingAs($this->traineeUser->fresh());
+
+        $id = $this->postJson('/api/v1/chat/conversations/open', [
+            'trainer_id' => $other->uuid,
+        ])->assertOk()->json('data.id');
+
+        $this->postJson("/api/v1/chat/conversations/{$id}/messages", [
+            'body' => 'سؤال سريع',
+        ])->assertCreated();
+
+        // The trainer it was addressed to sees it in their own list.
+        Sanctum::actingAs($otherUser->fresh());
+
+        $this->getJson('/api/v1/chat/conversations')
+            ->assertOk()
+            ->assertJsonPath('data.0.id', $id);
+    }
+
+    /** A trainer at another branch is a stranger, and holds none of their lessons. */
+    public function test_a_trainer_from_another_branch_cannot_be_messaged(): void
+    {
+        $otherBranch = \App\Models\Branch::factory()->create();
+
+        $stranger = Trainer::factory()->create(['branch_id' => $otherBranch->id]);
+
+        Sanctum::actingAs($this->traineeUser);
+
+        $this->postJson('/api/v1/chat/conversations/open', [
+            'trainer_id' => $stranger->uuid,
+        ])->assertStatus(422);
+
+        $this->assertSame(0, Conversation::where('trainer_id', $stranger->id)->count());
+    }
+
+    /** A trainer who has left cannot answer, so no thread is opened to them. */
+    public function test_a_trainer_who_is_not_active_cannot_be_messaged(): void
+    {
+        $inactive = Trainer::factory()->create([
+            'branch_id' => $this->branch->id,
+            'status' => 'terminated',
+        ]);
+
+        Sanctum::actingAs($this->traineeUser);
+
+        $this->postJson('/api/v1/chat/conversations/open', [
+            'trainer_id' => $inactive->uuid,
+        ])->assertStatus(422);
+
+        $this->assertSame(0, Conversation::count());
+    }
+
+    /** A trainer does not get to start threads with trainees from the app. */
+    public function test_a_trainer_cannot_open_a_thread_this_way(): void
+    {
+        Sanctum::actingAs($this->trainerUser);
+
+        $this->postJson('/api/v1/chat/conversations/open', [
+            'trainer_id' => $this->trainer->uuid,
+        ])->assertForbidden();
+    }
+
     public function test_each_side_is_shown_the_other_party(): void
     {
         Sanctum::actingAs($this->traineeUser);

@@ -255,6 +255,11 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
         Route::get('conversations', [ChatController::class, 'index'])->name('index');
         Route::get('my-conversation', [ChatController::class, 'mine'])->name('mine');
 
+        // A trainee opening a thread with any active trainer at their branch.
+        // Not a route parameter on the conversation: the thread may not exist
+        // yet, and the trainee names a trainer rather than a thread id.
+        Route::post('conversations/open', [ChatController::class, 'open'])->name('open');
+
         Route::get('conversations/{conversation}/messages', [ChatController::class, 'messages'])
             ->name('messages');
 
