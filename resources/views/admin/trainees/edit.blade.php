@@ -12,6 +12,17 @@
 @endsection
 
 @section('content')
+    {{-- Resetting the password is what brings staff here more often than
+         editing a birth date, so it sits above the record. Its own form,
+         outside the one below: a form nested in a form posts nothing. --}}
+    <div class="mb-5 lg:max-w-md">
+        <x-account.reset
+            :subject="$trainee"
+            issue-route="admin.trainees.account"
+            show-route="admin.trainees.show"
+            :can-manage="auth()->user()->hasPermission('trainees.update')" />
+    </div>
+
     <form method="POST" action="{{ route('admin.trainees.update', $trainee) }}" enctype="multipart/form-data">
         @csrf
         @method('PATCH')
