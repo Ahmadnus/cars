@@ -34,6 +34,11 @@ class CalendarController extends Controller
 
         $sessions = TrainingSession::query()
             ->visibleTo($request->user())
+            // A trainer's calendar is their own, here as in the sessions list.
+            ->when(
+                $request->user()->trainer && ! $request->user()->hasPermission('appointments.update'),
+                fn ($q) => $q->where('trainer_id', $request->user()->trainer->id),
+            )
             ->with(['trainee:id,uuid,full_name,trainee_number', 'trainer:id,uuid,full_name', 'vehicle:id,uuid,name'])
             ->whereBetween('scheduled_date', [$start->toDateString(), $end->toDateString()])
             ->when($request->filled('trainer_id'), fn ($q) => $q->where('trainer_id', $request->integer('trainer_id')))

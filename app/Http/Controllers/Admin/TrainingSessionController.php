@@ -33,6 +33,13 @@ class TrainingSessionController extends Controller
 
         $sessions = TrainingSession::query()
             ->visibleTo($request->user())
+            // A trainer sees their own diary here, as they do in the app. They
+            // hold `appointments.view` for their own lessons, not for the
+            // center's whole calendar.
+            ->when(
+                $request->user()->trainer && ! $request->user()->hasPermission('appointments.update'),
+                fn (Builder $q) => $q->where('trainer_id', $request->user()->trainer->id),
+            )
             ->with(['trainee:id,uuid,full_name,trainee_number', 'trainer:id,uuid,full_name', 'vehicle:id,uuid,name'])
             ->when($request->filled('search'), function (Builder $q) use ($request) {
                 $term = trim($request->string('search'));

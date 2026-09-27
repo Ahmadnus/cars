@@ -42,6 +42,15 @@ class TraineeController extends Controller
 
         $trainees = Trainee::query()
             ->visibleTo($request->user())
+            // The same rule the API applies: a trainer sees their own trainees
+            // and no one else's. Without it this page answered differently from
+            // /api/v1/trainees for the same account — and the policy already
+            // refuses to open a colleague's trainee, so listing them here only
+            // exposed names and numbers with nowhere to go.
+            ->when(
+                $request->user()->trainer && ! $request->user()->hasPermission('trainees.update'),
+                fn (Builder $q) => $q->where('trainer_id', $request->user()->trainer->id),
+            )
             ->with(['trainer:id,uuid,full_name', 'branch:id,uuid,name'])
             ->when($request->filled('search'), function (Builder $q) use ($request) {
                 $term = trim($request->string('search'));

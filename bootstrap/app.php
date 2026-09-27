@@ -42,6 +42,14 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        // A refused business rule is a conversation with the user, not a fault:
+        // "outside the branch's hours", "that number is already in use". They
+        // were filling the production log at ERROR level, which is how a real
+        // exception goes unnoticed among hundreds of ordinary refusals.
+        $exceptions->dontReport([
+            App\Exceptions\BusinessRuleException::class,
+        ]);
+
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request) => $request->is('api/*') || $request->expectsJson(),
         );
