@@ -36,7 +36,7 @@
                 type="password"
                 label="كلمة المرور"
                 autocomplete="new-password"
-                hint="اتركها فارغة ليولّدها النظام. تظهر مرة واحدة بعد الحفظ." />
+                :hint="\App\Support\IssuedPassword::hint() . ' اتركها فارغة ليولّدها النظام.'" />
 
             <x-form.input
                 name="login_password_confirmation"

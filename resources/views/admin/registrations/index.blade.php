@@ -13,6 +13,18 @@
         description="الطلبات الواردة من تطبيق المتدربين. لا يُنشأ ملف متدرب إلا بعد القبول."
     />
 
+    {{-- Straight after an approval: the password exists for this one render, so
+         it is put in front of the receptionist with a WhatsApp link rather than
+         buried in a toast that disappears. --}}
+    @if (session('issued_credentials'))
+        <x-account.credentials
+            class="mb-4"
+            :name="session('issued_credentials')['name'] ?? null"
+            :phone="session('issued_credentials')['phone'] ?? null"
+            :password="session('issued_credentials')['password'] ?? null"
+            :email="session('issued_credentials')['email'] ?? null" />
+    @endif
+
     <x-ui.live-queue
         :url="route('admin.registrations.count')"
         :current="$openCount"

@@ -16,6 +16,7 @@
                 ['route' => 'admin.calendar.index', 'label' => 'التقويم', 'icon' => 'calendar', 'can' => ['appointments.view']],
                 ['route' => 'admin.sessions.index', 'label' => 'الحصص التدريبية', 'icon' => 'steering', 'can' => ['appointments.view']],
                 ['route' => 'admin.booking-requests.index', 'label' => 'طلبات الحجز', 'icon' => 'inbox', 'can' => ['booking_requests.manage'], 'badge' => 'booking_requests'],
+                ['route' => 'admin.booking-requests.decisions', 'label' => 'قرارات المدربين', 'icon' => 'check', 'can' => ['booking_requests.manage'], 'badge' => 'trainer_decisions'],
                 ['route' => 'admin.registrations.index', 'label' => 'طلبات الانتساب', 'icon' => 'user-plus', 'can' => ['registrations.view'], 'badge' => 'registrations'],
             ],
         ],
@@ -78,6 +79,14 @@
         ? \App\Models\BookingRequest::query()->visibleTo()->pending()->count()
         : 0;
 
+    // Reschedules the trainer has agreed to and the office has not applied yet.
+    // Those are the ones where someone is waiting on the office, so they earn a
+    // badge; a refused one needs no chasing.
+    $awaitingOffice = auth()->user()?->hasPermission('booking_requests.manage')
+        ? \App\Models\BookingRequest::query()->visibleTo()->pending()
+            ->where('trainer_decision', \App\Models\BookingRequest::TRAINER_APPROVED)->count()
+        : 0;
+
     // Counted only for someone who may see the queue, so the query is skipped
     // entirely for a trainer or an accountant.
     $pendingRegistrations = auth()->user()?->hasPermission('registrations.view')
@@ -136,6 +145,12 @@
                                     @if (($item['badge'] ?? null) === 'booking_requests' && $pendingRequests > 0)
                                         <span class="ms-auto rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">
                                             {{ $pendingRequests }}
+                                        </span>
+                                    @endif
+
+                                    @if (($item['badge'] ?? null) === 'trainer_decisions' && $awaitingOffice > 0)
+                                        <span class="ms-auto rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-700">
+                                            {{ $awaitingOffice }}
                                         </span>
                                     @endif
 

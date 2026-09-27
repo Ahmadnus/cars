@@ -8,6 +8,7 @@ use App\Models\Role;
 use App\Models\Trainee;
 use App\Models\Trainer;
 use App\Models\User;
+use App\Support\IssuedPassword;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -236,7 +237,7 @@ class AccountService
      */
     protected function generatePassword(): string
     {
-        return Str::upper(Str::random(3)).random_int(10000, 99999);
+        return IssuedPassword::generate();
     }
 
     /**

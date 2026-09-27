@@ -369,6 +369,105 @@ class TrainerDecisionTest extends TestCase
         $this->assertSame(BookingRequest::TRAINER_APPROVED, $request->fresh()->trainer_decision);
     }
 
+    // ------------------------------------------------- the office decisions page
+
+    /**
+     * The page the office reads to carry out what the trainers agreed to.
+     *
+     * Its job is to name the trainer and put the two slots next to each other,
+     * so those are what is asserted rather than the layout.
+     */
+    public function test_the_decisions_page_lists_what_the_trainer_approved(): void
+    {
+        [$request] = $this->raiseReschedule();
+
+        $this->actingAsOwningTrainer();
+        $this->postJson("/api/v1/me/decisions/{$request->uuid}/approve", [
+            'note' => 'الموعد الجديد مناسب.',
+        ])->assertOk();
+
+        app('auth')->forgetGuards();
+        $this->actingAsUser($this->admin());
+
+        $this->get(route('admin.booking-requests.decisions'))
+            ->assertOk()
+            ->assertSee('وافق المدرب', false)
+            ->assertSee('عمر الزعبي', false)
+            ->assertSee('سارة الخطيب', false)
+            ->assertSee('الموعد الجديد مناسب.', false)
+            // Approved by the trainer, still the office's to apply.
+            ->assertSee('بانتظار تنفيذ الإدارة', false)
+            ->assertSee('تنفيذ التأجيل', false);
+    }
+
+    /** Refused requests are on their own tab, and offer no "apply" button. */
+    public function test_a_refused_request_is_listed_without_a_way_to_apply_it(): void
+    {
+        [$request] = $this->raiseReschedule();
+
+        $this->actingAsOwningTrainer();
+        $this->postJson("/api/v1/me/decisions/{$request->uuid}/reject", [
+            'note' => 'عندي التزام آخر.',
+        ])->assertOk();
+
+        app('auth')->forgetGuards();
+        $this->actingAsUser($this->admin());
+
+        // Not on the approved tab, which is what the office works through.
+        $this->get(route('admin.booking-requests.decisions'))
+            ->assertOk()
+            ->assertDontSee('سارة الخطيب', false);
+
+        $this->get(route('admin.booking-requests.decisions', ['decision' => 'rejected']))
+            ->assertOk()
+            ->assertSee('رفض المدرب', false)
+            ->assertSee('عندي التزام آخر.', false)
+            ->assertDontSee('تنفيذ التأجيل', false);
+    }
+
+    /** One still waiting on the trainer shows as that, and offers no apply. */
+    public function test_a_request_awaiting_the_trainer_is_listed_as_waiting(): void
+    {
+        $this->raiseReschedule();
+
+        app('auth')->forgetGuards();
+        $this->actingAsUser($this->admin());
+
+        $this->get(route('admin.booking-requests.decisions', ['decision' => 'pending']))
+            ->assertOk()
+            ->assertSee('بانتظار قرار المدرب', false)
+            ->assertDontSee('تنفيذ التأجيل', false);
+    }
+
+    /** A plain booking never reaches this page: no trainer was asked. */
+    public function test_a_plain_booking_is_not_listed(): void
+    {
+        $this->actingAsTrainee();
+
+        $this->postJson('/api/v1/booking-requests', [
+            'type' => 'booking',
+            'requested_date' => $this->workingDay(minimumOffset: 3)->toDateString(),
+            'requested_start_time' => '10:00',
+        ])->assertCreated();
+
+        app('auth')->forgetGuards();
+        $this->actingAsUser($this->admin());
+
+        foreach (['approved', 'pending', 'rejected'] as $decision) {
+            $this->get(route('admin.booking-requests.decisions', ['decision' => $decision]))
+                ->assertOk()
+                ->assertDontSee('سارة الخطيب', false);
+        }
+    }
+
+    public function test_the_page_needs_permission(): void
+    {
+        // A trainer answers requests in the app; the office page is not theirs.
+        $this->actingAsUser($this->userWithRole('trainer'));
+
+        $this->get(route('admin.booking-requests.decisions'))->assertForbidden();
+    }
+
     /** The dashboard row states it in words a receptionist can read. */
     public function test_the_queue_page_shows_who_approved_it(): void
     {

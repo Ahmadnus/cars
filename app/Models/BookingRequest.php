@@ -37,6 +37,9 @@ class BookingRequest extends Model
 
     public const TRAINER_REJECTED = 'rejected';
 
+    /** Every state the trainer's decision can be in, for filtering. */
+    public const TRAINER_DECISIONS = [self::TRAINER_PENDING, self::TRAINER_APPROVED, self::TRAINER_REJECTED];
+
     /** Types that wait on the trainer before the office can act. */
     public const TRAINER_DECIDED_TYPES = ['reschedule', 'cancellation'];
 

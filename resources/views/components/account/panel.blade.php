@@ -15,29 +15,12 @@
 
 <x-ui.card :title="$title">
     @if (session('issued_credentials'))
-        {{-- Shown once: nothing keeps the password readable, so a lost one is
-             reset rather than looked up. --}}
-        <div class="mb-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3">
-            <p class="mb-2 text-xs font-semibold text-emerald-800">
-                سلّم هذه البيانات لصاحب الحساب الآن — لن تظهر مرة أخرى.
-            </p>
-            <dl class="space-y-1 text-xs">
-                <div>
-                    <dt class="inline text-ink-500">رقم الهاتف:</dt>
-                    <dd class="inline font-mono text-ink-900" dir="ltr">{{ session('issued_credentials')['phone'] }}</dd>
-                </div>
-                @if (session('issued_credentials')['email'] ?? null)
-                    <div>
-                        <dt class="inline text-ink-500">البريد:</dt>
-                        <dd class="inline font-mono text-ink-900" dir="ltr">{{ session('issued_credentials')['email'] }}</dd>
-                    </div>
-                @endif
-                <div>
-                    <dt class="inline text-ink-500">كلمة المرور:</dt>
-                    <dd class="inline font-mono text-sm font-bold text-ink-900" dir="ltr">{{ session('issued_credentials')['password'] }}</dd>
-                </div>
-            </dl>
-        </div>
+        <x-account.credentials
+            class="mb-3"
+            :phone="session('issued_credentials')['phone'] ?? null"
+            :password="session('issued_credentials')['password'] ?? null"
+            :email="session('issued_credentials')['email'] ?? null"
+            :name="$subject->full_name" />
     @endif
 
     @if ($user)
@@ -98,7 +81,7 @@
                     type="password"
                     label="كلمة المرور"
                     autocomplete="new-password"
-                    hint="اتركها فارغة ليولّدها النظام." />
+                    :hint="\App\Support\IssuedPassword::hint() . ' اتركها فارغة ليولّدها النظام.'" />
 
                 <x-form.input
                     name="login_password_confirmation"

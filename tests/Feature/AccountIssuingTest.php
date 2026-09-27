@@ -54,18 +54,18 @@ class AccountIssuingTest extends TestCase
         $this->actingAsUser($this->admin());
 
         $this->post(route('admin.trainees.account', $trainee), [
-            'login_password' => 'Markaz!2026',
-            'login_password_confirmation' => 'Markaz!2026',
+            'login_password' => 'Markaz26',
+            'login_password_confirmation' => 'Markaz26',
         ])->assertSessionHasNoErrors();
 
         $trainee->refresh();
 
         $this->assertNotNull($trainee->user_id);
-        $this->assertTrue(Hash::check('Markaz!2026', $trainee->user->password));
+        $this->assertTrue(Hash::check('Markaz26', $trainee->user->password));
 
         // What was typed is what is shown back, so the receptionist reads out
         // the password they just agreed with the trainee on the phone.
-        $this->assertSame('Markaz!2026', session('issued_credentials')['password']);
+        $this->assertSame('Markaz26', session('issued_credentials')['password']);
     }
 
     public function test_a_typed_password_must_be_confirmed(): void
@@ -78,20 +78,22 @@ class AccountIssuingTest extends TestCase
         $this->actingAsUser($this->admin());
 
         $this->post(route('admin.trainees.account', $trainee), [
-            'login_password' => 'Markaz!2026',
-            'login_password_confirmation' => 'Markaz!2025',
+            'login_password' => 'Markaz26',
+            'login_password_confirmation' => 'Markaz25',
         ])->assertSessionHasErrors('login_password');
 
         $this->assertNull($trainee->fresh()->user_id);
     }
 
     /**
-     * A short password is refused here as anywhere else.
+     * Letters or digits, six to eight — what the center asked for.
      *
-     * These accounts reach real training files and real money, so the fact that
-     * the office typed it does not make it a lesser password.
+     * These are dictated over the phone, so the policy is deliberately looser
+     * than a staff password (see App\Support\IssuedPassword). It is still a
+     * policy: too short, too long, or with characters nobody can dictate is
+     * refused.
      */
-    public function test_a_weak_password_is_refused(): void
+    public function test_the_password_must_match_the_issued_policy(): void
     {
         $trainee = Trainee::factory()->create([
             'branch_id' => $this->branch->id,
@@ -100,12 +102,39 @@ class AccountIssuingTest extends TestCase
 
         $this->actingAsUser($this->admin());
 
-        $this->post(route('admin.trainees.account', $trainee), [
-            'login_password' => '123',
-            'login_password_confirmation' => '123',
-        ])->assertSessionHasErrors('login_password');
+        foreach (['12345', 'abc123456789', 'pass word', 'كلمةسر123', 'Mark!26'] as $rejected) {
+            $this->post(route('admin.trainees.account', $trainee), [
+                'login_password' => $rejected,
+                'login_password_confirmation' => $rejected,
+            ])->assertSessionHasErrors('login_password');
+        }
 
         $this->assertNull($trainee->fresh()->user_id);
+
+        // Six digits, eight digits, letters only and a mix all pass.
+        foreach (['123456', '12345678', 'abcdefgh', 'Kj7mN2pQ'] as $accepted) {
+            $this->post(route('admin.trainees.account', $trainee), [
+                'login_password' => $accepted,
+                'login_password_confirmation' => $accepted,
+            ])->assertSessionHasNoErrors();
+        }
+    }
+
+    /** What the system generates passes its own rules. */
+    public function test_a_generated_password_is_dictatable(): void
+    {
+        for ($i = 0; $i < 30; $i++) {
+            $password = \App\Support\IssuedPassword::generate();
+
+            $this->assertMatchesRegularExpression('/^[A-Za-z0-9]{6,8}$/', $password);
+
+            // No 0/O or 1/l/I: those are what get misheard on a phone line.
+            $this->assertDoesNotMatchRegularExpression('/[0O1lI]/', $password);
+
+            // Both letters and digits, so it is not a guessable word.
+            $this->assertMatchesRegularExpression('/[A-Za-z]/', $password);
+            $this->assertMatchesRegularExpression('/[0-9]/', $password);
+        }
     }
 
     /** Left blank, one is generated — the office does not have to invent one. */
@@ -139,8 +168,8 @@ class AccountIssuingTest extends TestCase
 
         $this->post(route('admin.employees.account', $employee), [
             'login_email' => 'reception@markaz.test',
-            'login_password' => 'Markaz!2026',
-            'login_password_confirmation' => 'Markaz!2026',
+            'login_password' => 'Markaz26',
+            'login_password_confirmation' => 'Markaz26',
             'login_roles' => [$this->roleId('receptionist')],
         ])->assertSessionHasNoErrors();
 
@@ -151,7 +180,7 @@ class AccountIssuingTest extends TestCase
         $this->signOut();
         $this->post(route('login.store'), [
             'email' => '0791110005',
-            'password' => 'Markaz!2026',
+            'password' => 'Markaz26',
         ])->assertRedirect();
 
         $this->assertAuthenticatedAs($employee->fresh()->user);
@@ -161,7 +190,7 @@ class AccountIssuingTest extends TestCase
 
         $this->post(route('login.store'), [
             'email' => 'reception@markaz.test',
-            'password' => 'Markaz!2026',
+            'password' => 'Markaz26',
         ])->assertRedirect();
 
         $this->assertAuthenticatedAs($employee->fresh()->user);
@@ -178,15 +207,15 @@ class AccountIssuingTest extends TestCase
         $this->actingAsUser($this->admin());
 
         $this->post(route('admin.trainers.account', $trainer), [
-            'login_password' => 'Markaz!2026',
-            'login_password_confirmation' => 'Markaz!2026',
+            'login_password' => 'Markaz26',
+            'login_password_confirmation' => 'Markaz26',
         ])->assertSessionHasNoErrors();
 
         $this->signOut();
 
         $this->post(route('login.store'), [
             'email' => '+962 79-111-0006',
-            'password' => 'Markaz!2026',
+            'password' => 'Markaz26',
         ])->assertRedirect();
 
         $this->assertAuthenticatedAs($trainer->fresh()->user);
@@ -201,8 +230,8 @@ class AccountIssuingTest extends TestCase
 
         $this->actingAsUser($this->admin());
         $this->post(route('admin.trainees.account', $trainee), [
-            'login_password' => 'Markaz!2026',
-            'login_password_confirmation' => 'Markaz!2026',
+            'login_password' => 'Markaz26',
+            'login_password_confirmation' => 'Markaz26',
         ]);
 
         $this->signOut();
@@ -234,8 +263,8 @@ class AccountIssuingTest extends TestCase
         $this->actingAsUser($this->admin());
 
         $this->post(route('admin.trainees.account', $trainee), [
-            'login_password' => 'Markaz!2026',
-            'login_password_confirmation' => 'Markaz!2026',
+            'login_password' => 'Markaz26',
+            'login_password_confirmation' => 'Markaz26',
             'login_roles' => [$this->roleId('receptionist'), $this->roleId('accountant')],
         ])->assertSessionHasNoErrors();
 
@@ -275,8 +304,8 @@ class AccountIssuingTest extends TestCase
         $this->actingAsUser($this->admin());
 
         $this->post(route('admin.employees.account', $employee), [
-            'login_password' => 'Markaz!2026',
-            'login_password_confirmation' => 'Markaz!2026',
+            'login_password' => 'Markaz26',
+            'login_password_confirmation' => 'Markaz26',
         ])->assertSessionHasErrors('login_roles');
 
         $this->assertNull($employee->fresh()->user_id);
@@ -333,8 +362,8 @@ class AccountIssuingTest extends TestCase
             'registration_date' => now()->toDateString(),
             'branch_id' => $this->branch->id,
             'create_login' => '1',
-            'login_password' => 'Markaz!2026',
-            'login_password_confirmation' => 'Markaz!2026',
+            'login_password' => 'Markaz26',
+            'login_password_confirmation' => 'Markaz26',
         ])->assertSessionHasNoErrors();
 
         $trainee = Trainee::where('phone', '0791110013')->firstOrFail();
@@ -357,8 +386,8 @@ class AccountIssuingTest extends TestCase
             'status' => 'active',
             'branch_id' => $this->branch->id,
             'create_login' => '1',
-            'login_password' => 'Markaz!2026',
-            'login_password_confirmation' => 'Markaz!2026',
+            'login_password' => 'Markaz26',
+            'login_password_confirmation' => 'Markaz26',
             'login_roles' => [$this->roleId('receptionist')],
         ])->assertSessionHasNoErrors();
 

@@ -4,11 +4,11 @@ namespace App\Http\Controllers\Concerns;
 
 use App\Models\Role;
 use App\Services\AccountService;
+use App\Support\IssuedPassword;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
-use Illuminate\Validation\Rules\Password;
 
 /**
  * Shared bits of "give this person a login", used by the trainee, trainer and
@@ -37,10 +37,11 @@ trait IssuesLoginAccounts
                 Rule::unique('users', 'email')->ignore($currentUserId)->whereNull('deleted_at'),
             ],
 
-            // Optional: left blank, one is generated. Typed, it must be
-            // confirmed and meet the same policy as any staff password — this
-            // account reaches real records, so it is not a lesser one.
-            'login_password' => ['nullable', 'confirmed', Password::defaults()],
+            // Optional: left blank, one is generated. Typed, it is held to the
+            // handed-out-password rules — letters or digits, six to eight —
+            // because the office dictates these over the phone. See
+            // IssuedPassword for why that is looser than a staff password.
+            'login_password' => IssuedPassword::rules(),
 
             'login_roles' => [$rolesRequired ? 'required' : 'nullable', 'array', 'min:1'],
             'login_roles.*' => ['integer', 'exists:roles,id'],

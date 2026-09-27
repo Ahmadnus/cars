@@ -158,6 +158,10 @@ Route::middleware(['auth', 'active'])->name('admin.')->group(function () {
     Route::middleware('permission:booking_requests.manage')->prefix('booking-requests')->name('booking-requests.')->group(function () {
         Route::get('/', [BookingRequestController::class, 'index'])->name('index');
 
+        // What the trainers have answered: a page of its own, because it is read
+        // to carry out approvals and to settle who agreed to what.
+        Route::get('decisions', [BookingRequestController::class, 'decisions'])->name('decisions');
+
         // Polled by the queue page to notice an arrival without a reload.
         Route::get('count', [BookingRequestController::class, 'count'])->name('count');
         Route::post('/{bookingRequest}/approve', [BookingRequestController::class, 'approve'])->name('approve');

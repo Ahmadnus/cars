@@ -52,6 +52,65 @@ class BookingRequestController extends Controller
     }
 
     /**
+     * Reschedules and cancellations the trainers have answered.
+     *
+     * A page of its own rather than a filter on the queue, because it answers a
+     * different question: the queue asks "what needs looking at", this asks
+     * "which of these did the trainer agree to, and who agreed". A receptionist
+     * opens it to carry out approvals, and it is the record a dispute a month
+     * later is settled from.
+     *
+     * Defaults to what the trainer approved and the office has not applied yet —
+     * that is the only set with work in it.
+     */
+    public function decisions(Request $request): View
+    {
+        $this->authorize('viewAny', BookingRequest::class);
+
+        $decision = $request->input('decision', BookingRequest::TRAINER_APPROVED);
+
+        $base = fn () => BookingRequest::query()
+            ->visibleTo($request->user())
+            ->whereNotNull('trainer_decision');
+
+        $requests = $base()
+            ->with([
+                'trainee:id,uuid,full_name,trainee_number,phone',
+                'preferredTrainer:id,uuid,full_name',
+                'trainingSession',
+                'resolver:id,name',
+                'trainerDecider.trainer',
+            ])
+            ->when(
+                in_array($decision, BookingRequest::TRAINER_DECISIONS, true),
+                fn ($q) => $q->where('trainer_decision', $decision),
+            )
+            ->when($request->filled('type'), fn ($q) => $q->where('type', $request->input('type')))
+            // Awaiting the office first: those are the ones with work in them.
+            ->orderByRaw("CASE WHEN booking_requests.status = 'pending' THEN 0 ELSE 1 END")
+            ->orderByDesc('trainer_decided_at')
+            ->orderByDesc('created_at')
+            ->paginate(20)
+            ->withQueryString();
+
+        return view('admin.booking-requests.decisions', [
+            'requests' => $requests,
+            'decision' => $decision,
+            'counts' => [
+                BookingRequest::TRAINER_PENDING => (clone $base())
+                    ->where('trainer_decision', BookingRequest::TRAINER_PENDING)->count(),
+                BookingRequest::TRAINER_APPROVED => (clone $base())
+                    ->where('trainer_decision', BookingRequest::TRAINER_APPROVED)->count(),
+                BookingRequest::TRAINER_REJECTED => (clone $base())
+                    ->where('trainer_decision', BookingRequest::TRAINER_REJECTED)->count(),
+            ],
+            'trainers' => Trainer::query()->visibleTo($request->user())->active()
+                ->orderBy('full_name')->pluck('full_name', 'id')->all(),
+            'types' => self::types(),
+        ]);
+    }
+
+    /**
      * How many requests are still pending.
      *
      * Polled by the queue page so a request raised from a phone appears without a

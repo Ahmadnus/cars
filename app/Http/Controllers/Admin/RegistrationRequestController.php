@@ -94,15 +94,24 @@ class RegistrationRequestController extends Controller
 
         $message = "تم قبول الطلب وإنشاء ملف المتدرب برقم {$result['trainee']->trainee_number}.";
 
-        // The generated password is shown once and never stored readably, so it
-        // is flashed rather than kept anywhere it could be read again.
-        if ($result['password']) {
-            $message .= ' بيانات الدخول: '.$result['trainee']->user?->email.' / '.$result['password'];
-        }
-
-        return redirect()
+        $redirect = redirect()
             ->route('admin.registrations.index')
             ->with('toast', ['type' => 'success', 'message' => $message]);
+
+        // The password is never stored readable, so it is flashed for one render
+        // and shown with copy buttons — the receptionist sends it on WhatsApp
+        // within seconds of approving, and cannot come back for it later.
+        if ($result['password']) {
+            $redirect->with('issued_credentials', [
+                'reference' => $registrationRequest->reference,
+                'name' => $result['trainee']->full_name,
+                'phone' => $result['trainee']->user?->phone ?? $result['trainee']->phone,
+                'email' => $result['trainee']->user?->email,
+                'password' => $result['password'],
+            ]);
+        }
+
+        return $redirect;
     }
 
     public function reject(Request $request, RegistrationRequest $registrationRequest): RedirectResponse

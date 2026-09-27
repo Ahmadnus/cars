@@ -8,6 +8,7 @@ use App\Models\RegistrationRequest;
 use App\Models\Role;
 use App\Models\Trainee;
 use App\Models\User;
+use App\Support\IssuedPassword;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
@@ -148,7 +149,9 @@ class RegistrationService
             ]);
 
             if ($createLogin) {
-                $password = Str::lower(Str::random(10));
+                // The office reads this out or sends it on WhatsApp the moment
+                // it approves, so it follows the handed-out-password rules.
+                $password = IssuedPassword::generate();
                 $this->createLogin($trainee, $password);
             }
 

@@ -13,6 +13,14 @@
         description="الطلبات الواردة من تطبيق المتدربين بانتظار المراجعة."
     />
 
+    {{-- A request awaiting the trainer is not the office's to apply, so the
+         page it is answered on is one click away. --}}
+    <div class="mb-4">
+        <x-ui.button :href="route('admin.booking-requests.decisions')" variant="secondary" size="sm">
+            قرارات المدربين على التأجيل والإلغاء
+        </x-ui.button>
+    </div>
+
     <x-ui.live-queue
         :url="route('admin.booking-requests.count')"
         :current="$pendingCount"
