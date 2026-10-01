@@ -17,7 +17,7 @@
                                :options="['manual' => 'عادي', 'automatic' => 'أوتوماتيك']"
                                :selected="$vehicle?->transmission ?? 'manual'" required />
                 <x-form.select name="license_type" label="نوع الرخصة"
-                               :options="['private' => 'خصوصي', 'motorcycle' => 'دراجة نارية', 'light_truck' => 'شحن خفيف', 'public' => 'عمومي']"
+                               :options="\App\Enums\LicenseType::options()"
                                :selected="$vehicle?->license_type ?? 'private'" placeholder="غير محدد" />
                 <x-form.input name="odometer_km" type="number" min="0" label="قراءة العداد (كم)" :value="$vehicle?->odometer_km" />
                 <x-form.select name="assigned_trainer_id" label="المدرب المسؤول" :options="$trainers"

@@ -4,11 +4,13 @@ namespace App\Services;
 
 use App\Events\RegistrationRequestUpdated;
 use App\Exceptions\BusinessRuleException;
+use App\Models\Document;
 use App\Models\RegistrationRequest;
 use App\Models\Role;
 use App\Models\Trainee;
 use App\Models\User;
 use App\Support\IssuedPassword;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
@@ -30,6 +32,7 @@ class RegistrationService
         protected AuditLogger $audit,
         protected PushService $push,
         protected NotificationService $notifications,
+        protected DocumentService $documents,
     ) {
     }
 
@@ -48,8 +51,11 @@ class RegistrationService
      *
      * @param  array<string, mixed>  $data
      */
-    public function submit(array $data, ?string $ip = null): RegistrationRequest
-    {
+    public function submit(
+        array $data,
+        ?string $ip = null,
+        ?UploadedFile $idPhoto = null,
+    ): RegistrationRequest {
         $phone = $this->otp->normalisePhone((string) $data['phone']);
 
         $this->assertNotAlreadyKnown($phone);
@@ -72,6 +78,20 @@ class RegistrationService
             'status' => RegistrationRequest::STATUS_PENDING,
             'ip_address' => $ip,
         ]);
+
+        /*
+         | Stored against the request, not against a trainee: there is no
+         | trainee yet, and there may never be one. A failure here must not
+         | lose the application itself — the form is what staff act on, and a
+         | missing photo is something they can ask for over the phone.
+         */
+        if ($idPhoto) {
+            try {
+                $this->documents->store($idPhoto, $request, 'identity', 'صورة الهوية');
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        }
 
         $this->announce($request, 'created');
 
@@ -154,6 +174,23 @@ class RegistrationService
                 $password = IssuedPassword::generate();
                 $this->createLogin($trainee, $password);
             }
+
+            /*
+             | Hand the applicant's papers to the file they belong to.
+             |
+             | Re-pointed rather than copied: the bytes on disk do not move, so
+             | there is one file and one checksum, and the trainee's documents
+             | tab shows it with no further work. The branch is stamped at the
+             | same time — the request may have carried none, or staff may have
+             | moved the applicant to another branch while approving.
+             */
+            Document::where('documentable_type', RegistrationRequest::class)
+                ->where('documentable_id', $locked->id)
+                ->update([
+                    'documentable_type' => Trainee::class,
+                    'documentable_id' => $trainee->id,
+                    'branch_id' => $trainee->branch_id,
+                ]);
 
             $locked->forceFill([
                 'status' => RegistrationRequest::STATUS_APPROVED,

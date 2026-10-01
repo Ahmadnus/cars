@@ -75,6 +75,12 @@
                                 <dd class="inline font-mono text-ink-700" dir="ltr">{{ $registration->national_id }}</dd>
                             </div>
                         @endif
+                        @if ($registration->license_type)
+                            <div>
+                                <dt class="inline">نوع الرخصة:</dt>
+                                <dd class="inline text-ink-700">{{ \App\Enums\LicenseType::labelFor($registration->license_type) }}</dd>
+                            </div>
+                        @endif
                         @if ($registration->city)
                             <div><dt class="inline">المدينة:</dt> <dd class="inline text-ink-700">{{ $registration->city }}</dd></div>
                         @endif
@@ -88,6 +94,20 @@
                             </div>
                         @endif
                     </dl>
+
+                    @php($idPhoto = $registration->documents->firstWhere('category', 'identity'))
+
+                    @if ($idPhoto)
+                        {{-- Shown rather than linked: the whole point of asking
+                             for it is that staff can check the name and number
+                             against the form without leaving the queue. --}}
+                        <a href="{{ route('admin.documents.view', $idPhoto) }}" target="_blank" rel="noopener"
+                           class="mt-2.5 inline-flex items-center gap-2 rounded-lg border border-ink-200 p-1.5 transition hover:border-ink-300 hover:bg-ink-50">
+                            <img src="{{ route('admin.documents.view', $idPhoto) }}" alt="صورة الهوية"
+                                 loading="lazy" class="h-14 w-20 rounded object-cover" />
+                            <span class="pe-1 text-xs font-medium text-ink-600">صورة الهوية</span>
+                        </a>
+                    @endif
 
                     @if ($registration->notes)
                         <p class="mt-2 rounded-lg bg-ink-50 p-2.5 text-xs text-ink-600">{{ $registration->notes }}</p>

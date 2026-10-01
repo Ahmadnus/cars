@@ -12,7 +12,7 @@
                 <x-form.select
                     name="license_type"
                     label="نوع الرخصة"
-                    :options="['private' => 'خصوصي', 'motorcycle' => 'دراجة نارية', 'light_truck' => 'شحن خفيف', 'public' => 'عمومي']"
+                    :options="\App\Enums\LicenseType::options()"
                     :selected="$package?->license_type ?? 'private'"
                     required
                 />

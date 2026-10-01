@@ -55,7 +55,7 @@
                         </td>
                         <td class="px-3 py-3 font-mono text-ink-600" dir="ltr">{{ $trainee->phone }}</td>
                         <td class="px-3 py-3 text-ink-600">{{ $trainee->trainer?->full_name ?? '—' }}</td>
-                        <td class="px-3 py-3 text-ink-600">{{ $trainee->license_type }}</td>
+                        <td class="px-3 py-3 text-ink-600">{{ \App\Enums\LicenseType::labelFor($trainee->license_type) }}</td>
                         <td class="whitespace-nowrap px-3 py-3 text-ink-600">{{ $trainee->registration_date->format('Y-m-d') }}</td>
                         <td class="px-3 py-3"><x-ui.status type="trainee" :value="$trainee->status" /></td>
                         <td class="px-3 py-3 text-end">

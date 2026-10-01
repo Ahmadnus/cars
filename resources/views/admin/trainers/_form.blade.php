@@ -47,7 +47,7 @@
             <div class="mt-4">
                 <p class="mb-2 text-sm font-medium text-ink-700">أنواع الرخص</p>
                 <div class="flex flex-wrap gap-2">
-                    @foreach (['private' => 'خصوصي', 'motorcycle' => 'دراجة نارية', 'light_truck' => 'شحن خفيف', 'public' => 'عمومي'] as $value => $label)
+                    @foreach (\App\Enums\LicenseType::options() as $value => $label)
                         <label class="flex cursor-pointer items-center gap-2 rounded-lg border border-ink-200 px-3 py-1.5 text-sm has-[:checked]:border-brand-500 has-[:checked]:bg-brand-50">
                             <input type="checkbox" name="license_types[]" value="{{ $value }}"
                                    @checked(in_array($value, (array) $selectedLicenses))

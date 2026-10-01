@@ -3,12 +3,15 @@
 namespace Tests\Feature;
 
 use App\Events\RegistrationRequestUpdated;
+use App\Models\Document;
 use App\Models\RegistrationRequest;
 use App\Models\Trainee;
 use App\Models\User;
 use App\Services\OtpService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Storage;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
@@ -323,5 +326,113 @@ class SelfRegistrationTest extends TestCase
             ->assertStatus(422);
 
         $this->assertSame(0, Trainee::count());
+    }
+
+    // ---------------------------------------------------------- the ID photo
+
+    /**
+     * The applicant attaches a photo of their ID.
+     *
+     * It hangs off the request rather than off a trainee, because approval has
+     * not happened yet and may never happen.
+     */
+    public function test_an_applicant_can_attach_a_photo_of_their_id(): void
+    {
+        Storage::fake(config('filesystems.private_disk', 'private'));
+
+        $this->postJson('/api/v1/public/registrations', $this->form([
+            'id_photo' => UploadedFile::fake()->image('id.jpg', 900, 600),
+        ]))->assertCreated();
+
+        $request = RegistrationRequest::firstOrFail();
+        $photo = $request->idPhoto();
+
+        $this->assertNotNull($photo, 'the photo is attached to the request');
+        $this->assertSame('identity', $photo->category);
+        $this->assertSame(RegistrationRequest::class, $photo->documentable_type);
+        $this->assertSame($request->id, $photo->documentable_id);
+
+        Storage::disk($photo->disk)->assertExists($photo->path);
+    }
+
+    /** The photo is optional: the form is accepted without one. */
+    public function test_the_photo_is_optional(): void
+    {
+        $this->postJson('/api/v1/public/registrations', $this->form())
+            ->assertCreated();
+
+        $this->assertNull(RegistrationRequest::firstOrFail()->idPhoto());
+    }
+
+    /** A PDF is refused, and nothing is filed. */
+    public function test_only_an_image_is_accepted(): void
+    {
+        $this->postJson('/api/v1/public/registrations', $this->form([
+            'id_photo' => UploadedFile::fake()->create('id.pdf', 100, 'application/pdf'),
+        ]))->assertStatus(422)->assertJsonValidationErrors('id_photo');
+
+        $this->assertSame(0, RegistrationRequest::count());
+    }
+
+    /**
+     * On approval the photo follows the applicant into their trainee file.
+     *
+     * Re-pointed, not copied: one row and one file on disk, and it appears in
+     * the trainee's documents tab without staff re-uploading anything.
+     */
+    public function test_the_photo_moves_to_the_trainee_on_approval(): void
+    {
+        Storage::fake(config('filesystems.private_disk', 'private'));
+
+        $this->postJson('/api/v1/public/registrations', $this->form([
+            'id_photo' => UploadedFile::fake()->image('id.jpg'),
+        ]))->assertCreated();
+
+        $request = RegistrationRequest::firstOrFail();
+        $photoId = $request->idPhoto()->id;
+
+        Sanctum::actingAs($this->userWithRole('receptionist'));
+
+        $this->postJson("/api/v1/registrations/{$request->uuid}/approve", [
+            'branch_id' => $this->branch->uuid,
+        ])->assertOk();
+
+        $trainee = Trainee::firstOrFail();
+        $photo = Document::findOrFail($photoId);
+
+        $this->assertSame(Trainee::class, $photo->documentable_type);
+        $this->assertSame($trainee->id, $photo->documentable_id);
+        $this->assertSame($trainee->branch_id, $photo->branch_id);
+        $this->assertSame(1, Document::count(), 'moved, not duplicated');
+    }
+
+    // ----------------------------------------------------- the licence types
+
+    /** The combined private-and-motorcycle course is on offer. */
+    public function test_the_private_and_motorcycle_category_is_offered(): void
+    {
+        $types = $this->getJson('/api/v1/public/registrations/options')
+            ->assertOk()
+            ->json('data.license_types');
+
+        $this->assertContains('private_motorcycle', array_column($types, 'value'));
+        $this->assertContains('خصوصي ودراجة', array_column($types, 'label'));
+    }
+
+    public function test_an_applicant_can_choose_it(): void
+    {
+        $this->postJson('/api/v1/public/registrations', $this->form([
+            'license_type' => 'private_motorcycle',
+        ]))->assertCreated();
+
+        $this->assertSame('private_motorcycle', RegistrationRequest::firstOrFail()->license_type);
+    }
+
+    /** A category nobody offers is a malformed request, not a new category. */
+    public function test_an_unknown_licence_category_is_refused(): void
+    {
+        $this->postJson('/api/v1/public/registrations', $this->form([
+            'license_type' => 'spaceship',
+        ]))->assertStatus(422)->assertJsonValidationErrors('license_type');
     }
 }

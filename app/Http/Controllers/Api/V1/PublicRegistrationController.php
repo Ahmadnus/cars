@@ -2,12 +2,14 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Enums\LicenseType;
 use App\Http\Resources\RegistrationRequestResource;
 use App\Models\Branch;
 use App\Models\RegistrationRequest;
 use App\Services\RegistrationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 /**
  * Join requests from anyone who downloads the app — no account required.
@@ -44,13 +46,7 @@ class PublicRegistrationController extends ApiController
                     'address' => $branch->address,
                     'phone' => $branch->phone,
                 ]),
-            'license_types' => [
-                ['value' => 'private', 'label' => 'خصوصي'],
-                ['value' => 'motorcycle', 'label' => 'دراجة نارية'],
-                ['value' => 'light_truck', 'label' => 'شحن خفيف'],
-                ['value' => 'heavy_truck', 'label' => 'شحن ثقيل'],
-                ['value' => 'public', 'label' => 'عمومي'],
-            ],
+            'license_types' => LicenseType::forApi(),
             'genders' => [
                 ['value' => 'male', 'label' => 'ذكر'],
                 ['value' => 'female', 'label' => 'أنثى'],
@@ -77,20 +73,42 @@ class PublicRegistrationController extends ApiController
             'gender' => ['nullable', 'in:male,female'],
             'city' => ['nullable', 'string', 'max:120'],
             'address' => ['nullable', 'string', 'max:255'],
-            'license_type' => ['nullable', 'string', 'max:30'],
+            // Checked against the enum rather than accepting any string: the
+            // list the app offers comes from the same place, so anything else
+            // is a malformed request, not a category we have yet to add.
+            'license_type' => ['nullable', Rule::enum(LicenseType::class)],
             'branch_id' => ['nullable', 'string', 'exists:branches,uuid'],
             'notes' => ['nullable', 'string', 'max:1000'],
+
+            /*
+             | Optional on purpose. Everything but the name and the number is,
+             | and a camera that will not focus must not be the thing that stops
+             | someone applying — staff can ask for the ID when they call. The
+             | limits mirror DocumentService::ALLOWED and its 8MB ceiling, so a
+             | file accepted here cannot be refused further down.
+             */
+            'id_photo' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:8192'],
         ], [], [
             'full_name' => 'الاسم الكامل',
             'phone' => 'رقم الهاتف',
             'birth_date' => 'تاريخ الميلاد',
+            'license_type' => 'نوع الرخصة',
+            'id_photo' => 'صورة الهوية',
         ]);
 
         if (! empty($data['branch_id'])) {
             $data['branch_id'] = Branch::where('uuid', $data['branch_id'])->value('id');
         }
 
-        $registration = $this->registrations->submit($data, $request->ip());
+        // The file is kept out of $data: the service writes the validated
+        // array straight onto the model, and an UploadedFile is not a column.
+        unset($data['id_photo']);
+
+        $registration = $this->registrations->submit(
+            $data,
+            $request->ip(),
+            $request->file('id_photo'),
+        );
 
         return $this->created([
             'reference' => $registration->reference,

@@ -6,6 +6,7 @@ use App\Models\Concerns\HasUuid;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Support\Str;
 
 /**
@@ -83,6 +84,24 @@ class RegistrationRequest extends Model
     public function trainee(): BelongsTo
     {
         return $this->belongsTo(Trainee::class);
+    }
+
+    /**
+     * Papers the applicant attached to the form.
+     *
+     * These are the only files in the system uploaded by someone with no
+     * account, so they hang off the request rather than off a trainee — which
+     * does not exist yet — and are re-pointed at the trainee on approval.
+     */
+    public function documents(): MorphMany
+    {
+        return $this->morphMany(Document::class, 'documentable');
+    }
+
+    /** The photo of the applicant's ID, if they attached one. */
+    public function idPhoto(): ?Document
+    {
+        return $this->documents()->where('category', 'identity')->latest()->first();
     }
 
     public function scopeOpen(Builder $query): Builder

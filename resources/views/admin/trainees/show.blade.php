@@ -102,7 +102,7 @@
                         'الجنس' => ['male' => 'ذكر', 'female' => 'أنثى'][$trainee->gender] ?? '—',
                         'هاتف إضافي' => $trainee->secondary_phone ?: '—',
                         'العنوان' => $trainee->address ?: '—',
-                        'نوع الرخصة' => $trainee->license_type,
+                        'نوع الرخصة' => \App\Enums\LicenseType::labelFor($trainee->license_type),
                         'موعد الامتحان' => $trainee->exam_date?->format('Y-m-d') ?: '—',
                     ] as $label => $value)
                         <div class="flex items-baseline justify-between gap-3 border-b border-ink-100 pb-2">

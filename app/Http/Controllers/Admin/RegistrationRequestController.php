@@ -29,7 +29,7 @@ class RegistrationRequestController extends Controller
     public function index(Request $request, BranchContext $branches): View
     {
         $requests = RegistrationRequest::query()
-            ->with('branch:id,uuid,name', 'reviewer:id,name', 'trainee:id,uuid,trainee_number')
+            ->with('branch:id,uuid,name', 'reviewer:id,name', 'trainee:id,uuid,trainee_number', 'documents')
             ->when(
                 $request->filled('status'),
                 fn ($q) => $q->where('registration_requests.status', $request->input('status')),
