@@ -81,9 +81,15 @@ class DemoDataSeeder extends Seeder
      * Give one demo trainee an app login.
      *
      * The phone is the one listed in config/otp.php, so the Trainee app can be
-     * signed into with a fixed passcode. Trainees have no usable password —
-     * the column is filled with an unguessable value the passcode flow never
-     * consults, because the password route rejects them outright.
+     * signed into with a fixed passcode.
+     *
+     * The password is the one every other seeded account uses. It used to be an
+     * unguessable random string, on the grounds that the API refused trainees
+     * on the password route and only the passcode flow could reach them — but
+     * that refusal was lifted (see AuthController::login) because the Trainee
+     * app has no passcode screen and the credentials the office issues are
+     * passwords. The random value was left behind, which made this the one
+     * demo account nobody could actually sign in as.
      */
     protected function traineeLogin(Trainee $trainee): void
     {
@@ -94,7 +100,7 @@ class DemoDataSeeder extends Seeder
             [
                 'name' => $trainee->full_name,
                 'phone' => '0790000007',
-                'password' => \Illuminate\Support\Facades\Hash::make(\Illuminate\Support\Str::random(40)),
+                'password' => \Illuminate\Support\Facades\Hash::make(UserSeeder::DEMO_PASSWORD),
                 'branch_id' => $trainee->branch_id,
                 'is_super_admin' => false,
                 'can_access_all_branches' => false,
