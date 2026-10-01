@@ -13,6 +13,7 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Storage;
 use Laravel\Sanctum\Sanctum;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 /**
@@ -408,24 +409,38 @@ class SelfRegistrationTest extends TestCase
 
     // ----------------------------------------------------- the licence types
 
-    /** The combined private-and-motorcycle course is on offer. */
-    public function test_the_private_and_motorcycle_category_is_offered(): void
+    /** Both motorcycle courses are on offer, and they are not the same one. */
+    public function test_the_motorcycle_categories_are_offered(): void
     {
         $types = $this->getJson('/api/v1/public/registrations/options')
             ->assertOk()
             ->json('data.license_types');
 
-        $this->assertContains('private_motorcycle', array_column($types, 'value'));
-        $this->assertContains('خصوصي ودراجة', array_column($types, 'label'));
+        $values = array_column($types, 'value');
+        $labels = array_column($types, 'label');
+
+        $this->assertContains('motorcycle_private', $values);
+        $this->assertContains('دراجة خصوصي', $labels);
+
+        $this->assertContains('private_and_motorcycle', $values);
+        $this->assertContains('خصوصي ودراجة', $labels);
     }
 
-    public function test_an_applicant_can_choose_it(): void
+    /** @return iterable<string, array{string}> */
+    public static function newCategories(): iterable
+    {
+        yield 'motorcycle on its own' => ['motorcycle_private'];
+        yield 'car and motorcycle together' => ['private_and_motorcycle'];
+    }
+
+    #[DataProvider('newCategories')]
+    public function test_an_applicant_can_choose_it(string $category): void
     {
         $this->postJson('/api/v1/public/registrations', $this->form([
-            'license_type' => 'private_motorcycle',
+            'license_type' => $category,
         ]))->assertCreated();
 
-        $this->assertSame('private_motorcycle', RegistrationRequest::firstOrFail()->license_type);
+        $this->assertSame($category, RegistrationRequest::firstOrFail()->license_type);
     }
 
     /** A category nobody offers is a malformed request, not a new category. */
@@ -434,5 +449,64 @@ class SelfRegistrationTest extends TestCase
         $this->postJson('/api/v1/public/registrations', $this->form([
             'license_type' => 'spaceship',
         ]))->assertStatus(422)->assertJsonValidationErrors('license_type');
+    }
+
+    // ------------------------------------------------- seeing it in the queue
+
+    /**
+     * The reviewer can open the photo.
+     *
+     * DocumentPolicy decides access from the record a document hangs off, and
+     * it had no case for a join request — so the match fell through to
+     * "super admin only" and the receptionist, who is the whole audience for
+     * this feature, was the one person refused.
+     */
+    public function test_the_reviewer_can_open_the_id_photo(): void
+    {
+        Storage::fake(config('filesystems.private_disk', 'private'));
+
+        $this->postJson('/api/v1/public/registrations', $this->form([
+            'id_photo' => UploadedFile::fake()->image('id.jpg'),
+        ]))->assertCreated();
+
+        $photo = RegistrationRequest::firstOrFail()->idPhoto();
+
+        $this->actingAs($this->userWithRole('receptionist'))
+            ->get(route('admin.documents.view', $photo))
+            ->assertOk();
+    }
+
+    /** Someone with no business in the queue still cannot open it. */
+    public function test_a_trainer_cannot_open_the_id_photo(): void
+    {
+        Storage::fake(config('filesystems.private_disk', 'private'));
+
+        $this->postJson('/api/v1/public/registrations', $this->form([
+            'id_photo' => UploadedFile::fake()->image('id.jpg'),
+        ]))->assertCreated();
+
+        $photo = RegistrationRequest::firstOrFail()->idPhoto();
+
+        $this->actingAs($this->userWithRole('trainer'))
+            ->get(route('admin.documents.view', $photo))
+            ->assertForbidden();
+    }
+
+    /** The queue renders the photo rather than only linking to it. */
+    public function test_the_queue_shows_the_photo(): void
+    {
+        Storage::fake(config('filesystems.private_disk', 'private'));
+
+        $this->postJson('/api/v1/public/registrations', $this->form([
+            'id_photo' => UploadedFile::fake()->image('id.jpg'),
+        ]))->assertCreated();
+
+        $photo = RegistrationRequest::firstOrFail()->idPhoto();
+
+        $this->actingAs($this->userWithRole('receptionist'))
+            ->get(route('admin.registrations.index'))
+            ->assertOk()
+            ->assertSee('صورة الهوية')
+            ->assertSee(route('admin.documents.view', $photo));
     }
 }

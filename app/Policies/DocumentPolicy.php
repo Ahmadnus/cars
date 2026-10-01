@@ -56,6 +56,15 @@ class DocumentPolicy extends BasePolicy
 
         return match (true) {
             $owner instanceof Trainee => $user->hasPermission($write ? 'trainees.documents' : 'trainees.view'),
+            // A paper attached to a join request is guarded by the queue that
+            // holds it, not by the trainee permissions: there is no trainee
+            // yet, and the reviewer reading the application is exactly the
+            // person who needs the ID next to it. Without this case the match
+            // fell through to `isSuperAdmin`, so the receptionist who does the
+            // reviewing was the one person who could not see it.
+            $owner instanceof \App\Models\RegistrationRequest => $user->hasPermission(
+                $write ? 'registrations.manage' : 'registrations.view',
+            ),
             $owner instanceof \App\Models\Trainer => $user->hasPermission($write ? 'trainers.update' : 'trainers.view'),
             $owner instanceof Employee => $user->hasPermission($write ? 'employees.manage' : 'employees.view'),
             $owner instanceof \App\Models\Vehicle => $user->hasPermission($write ? 'vehicles.manage' : 'vehicles.view'),

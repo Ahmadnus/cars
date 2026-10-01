@@ -20,8 +20,17 @@ enum LicenseType: string
 
     case Motorcycle = 'motorcycle';
 
-    /** Taught as one course: the trainee sits both tests. */
-    case PrivateMotorcycle = 'private_motorcycle';
+    /** A motorcycle licence in its own right. */
+    case MotorcyclePrivate = 'motorcycle_private';
+
+    /**
+     * Car and motorcycle taught as one course: the trainee sits both tests.
+     *
+     * Spelled `private_and_motorcycle` rather than `private_motorcycle` so it
+     * cannot be misread as [MotorcyclePrivate] at a glance — the two are a
+     * single word apart and mean different courses.
+     */
+    case PrivateAndMotorcycle = 'private_and_motorcycle';
 
     case LightTruck = 'light_truck';
 
@@ -34,7 +43,8 @@ enum LicenseType: string
         return match ($this) {
             self::Private => 'خصوصي',
             self::Motorcycle => 'دراجة نارية',
-            self::PrivateMotorcycle => 'خصوصي ودراجة',
+            self::MotorcyclePrivate => 'دراجة خصوصي',
+            self::PrivateAndMotorcycle => 'خصوصي ودراجة',
             self::LightTruck => 'شحن خفيف',
             self::HeavyTruck => 'شحن ثقيل',
             self::Public => 'عمومي',

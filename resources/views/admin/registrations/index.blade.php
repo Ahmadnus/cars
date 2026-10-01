@@ -98,15 +98,43 @@
                     @php($idPhoto = $registration->documents->firstWhere('category', 'identity'))
 
                     @if ($idPhoto)
-                        {{-- Shown rather than linked: the whole point of asking
-                             for it is that staff can check the name and number
-                             against the form without leaving the queue. --}}
-                        <a href="{{ route('admin.documents.view', $idPhoto) }}" target="_blank" rel="noopener"
-                           class="mt-2.5 inline-flex items-center gap-2 rounded-lg border border-ink-200 p-1.5 transition hover:border-ink-300 hover:bg-ink-50">
-                            <img src="{{ route('admin.documents.view', $idPhoto) }}" alt="صورة الهوية"
-                                 loading="lazy" class="h-14 w-20 rounded object-cover" />
-                            <span class="pe-1 text-xs font-medium text-ink-600">صورة الهوية</span>
-                        </a>
+                        {{-- Shown, not linked. The reason the centre asked for
+                             the photo is so a reviewer can read the name and
+                             the national number off the ID and check them
+                             against the form — which they cannot do from a
+                             filename, and will not do if it costs them a new
+                             tab and their place in the queue. Clicking opens
+                             it full size, still without leaving the page. --}}
+                        <div x-data="{ zoom: false }" class="mt-3">
+                            <p class="mb-1.5 text-xs font-medium text-ink-500">صورة الهوية</p>
+
+                            <button type="button" @click="zoom = true"
+                                    class="block overflow-hidden rounded-xl border border-ink-200 bg-ink-50 transition hover:border-ink-400"
+                                    title="اضغط للتكبير">
+                                <img src="{{ route('admin.documents.view', $idPhoto) }}"
+                                     alt="صورة هوية {{ $registration->full_name }}"
+                                     loading="lazy"
+                                     class="h-36 w-auto max-w-full object-contain" />
+                            </button>
+
+                            <div x-show="zoom" x-cloak
+                                 @click="zoom = false"
+                                 @keydown.escape.window="zoom = false"
+                                 class="fixed inset-0 z-50 flex items-center justify-center bg-ink-900/80 p-4"
+                                 role="dialog" aria-modal="true"
+                                 aria-label="صورة هوية {{ $registration->full_name }}">
+                                <img src="{{ route('admin.documents.view', $idPhoto) }}"
+                                     alt="صورة هوية {{ $registration->full_name }}"
+                                     @click.stop
+                                     class="max-h-full max-w-full rounded-lg object-contain shadow-2xl" />
+
+                                <button type="button" @click="zoom = false"
+                                        class="absolute end-4 top-4 rounded-lg bg-white/90 p-2 text-ink-700 shadow hover:bg-white"
+                                        aria-label="إغلاق">
+                                    <x-ui.icon name="x" class="size-4" />
+                                </button>
+                            </div>
+                        </div>
                     @endif
 
                     @if ($registration->notes)
