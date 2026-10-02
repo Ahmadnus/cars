@@ -2,6 +2,9 @@
 
 namespace App\Providers;
 
+use App\Services\IdCards\ClaudeIdCardReader;
+use App\Services\IdCards\IdCardReader;
+use App\Services\IdCards\LogIdCardReader;
 use App\Services\NotificationService;
 use App\Services\Notifications\ChannelGateway;
 use App\Services\Notifications\FcmGateway;
@@ -51,6 +54,27 @@ class AppServiceProvider extends ServiceProvider
             );
 
             return new PushService($push);
+        });
+
+        /*
+         | Reading an ID photo. Two yeses again — switched on in config and a key
+         | present — with the log reader behind it when either is missing, so the
+         | forms still work and simply do not offer to fill themselves.
+         */
+        $this->app->singleton(IdCardReader::class, function () {
+            $key = config('id_reader.api_key');
+
+            if (! config('id_reader.enabled') || blank($key)) {
+                return new LogIdCardReader;
+            }
+
+            return new ClaudeIdCardReader(
+                enabled: true,
+                apiKey: (string) $key,
+                model: (string) config('id_reader.model', 'claude-opus-5-5'),
+                effort: (string) config('id_reader.effort', 'low'),
+                timeout: (int) config('id_reader.timeout', 60),
+            );
         });
     }
 

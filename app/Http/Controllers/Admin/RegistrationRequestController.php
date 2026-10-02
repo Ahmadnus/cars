@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Branch;
 use App\Models\RegistrationRequest;
 use App\Models\Trainer;
+use App\Services\IdCardService;
 use App\Services\RegistrationService;
 use App\Support\BranchContext;
 use Illuminate\Http\RedirectResponse;
@@ -22,8 +23,10 @@ use Illuminate\View\View;
  */
 class RegistrationRequestController extends Controller
 {
-    public function __construct(protected RegistrationService $registrations)
-    {
+    public function __construct(
+        protected RegistrationService $registrations,
+        protected IdCardService $cards,
+    ) {
     }
 
     public function index(Request $request, BranchContext $branches): View
@@ -59,6 +62,9 @@ class RegistrationRequestController extends Controller
                 ->where('status', 'active')
                 ->orderBy('full_name')
                 ->get(['id', 'uuid', 'full_name']),
+            // Decides whether the queue offers to read a card at all: with no
+            // provider configured the button would only ever apologise.
+            'canReadIds' => $this->cards->isEnabled(),
         ]);
     }
 
@@ -74,21 +80,56 @@ class RegistrationRequestController extends Controller
         return response()->json(['open' => RegistrationRequest::open()->count()]);
     }
 
+    /**
+     * Have the attached ID photo read, so the queue shows what the card says.
+     *
+     * A deliberate action rather than something that happens on arrival: every
+     * reading costs the center money, and most requests are decided from the
+     * photo in a glance. The reviewer asks for one when the details matter — and
+     * asks again, with the same button, when the applicant sends a better photo.
+     *
+     * Behind `registrations.manage` with the decisions rather than with viewing:
+     * it spends money and writes to the record, which is not what a read-only
+     * supervisor's permission promises.
+     */
+    public function scanId(RegistrationRequest $registrationRequest): RedirectResponse
+    {
+        $reading = $this->cards->forRegistration($registrationRequest, refresh: true);
+
+        return back()->with('toast', $reading->succeeded()
+            ? ['type' => 'success', 'message' => 'تم قراءة بيانات الهوية. راجعها قبل القبول.']
+            : ['type' => 'error', 'message' => $reading->message ?? 'تعذّرت قراءة الهوية.']);
+    }
+
     public function approve(Request $request, RegistrationRequest $registrationRequest): RedirectResponse
     {
         $data = $request->validate([
             'branch_id' => ['nullable', 'exists:branches,id'],
             'trainer_id' => ['nullable', 'exists:trainers,id'],
             'create_login' => ['nullable', 'boolean'],
+            'use_scan' => ['nullable', 'boolean'],
         ], [], ['branch_id' => 'الفرع', 'trainer_id' => 'المدرب']);
+
+        $overrides = array_filter([
+            'branch_id' => $data['branch_id'] ?? null,
+            'trainer_id' => $data['trainer_id'] ?? null,
+        ], static fn ($value) => $value !== null);
+
+        /*
+         | The reviewer ticked "use what was read off the ID".
+         |
+         | The values are taken from the stored reading, not from the form: the
+         | browser sends one checkbox, so nothing it can send puts a different
+         | name on the trainee than the one the reviewer was shown.
+         */
+        if ($request->boolean('use_scan')) {
+            $overrides += $this->readingOverrides($registrationRequest);
+        }
 
         $result = $this->registrations->approve(
             $registrationRequest,
             $request->user(),
-            array_filter([
-                'branch_id' => $data['branch_id'] ?? null,
-                'trainer_id' => $data['trainer_id'] ?? null,
-            ], static fn ($value) => $value !== null),
+            $overrides,
             $request->boolean('create_login', true),
         );
 
@@ -125,5 +166,27 @@ class RegistrationRequestController extends Controller
         return redirect()
             ->route('admin.registrations.index')
             ->with('toast', ['type' => 'success', 'message' => 'تم رفض الطلب وإبلاغ مقدّمه.']);
+    }
+
+    /**
+     * The read fields a trainee record has somewhere to put.
+     *
+     * The city is read off the card and shown to the reviewer, but a trainee has
+     * no city column — only an address — so it stays on the request where it was
+     * read rather than being forced into a field it does not belong in.
+     *
+     * @return array<string, string>
+     */
+    protected function readingOverrides(RegistrationRequest $request): array
+    {
+        $reading = $request->idReading();
+
+        if (! $reading) {
+            return [];
+        }
+
+        return array_intersect_key($reading->fields(), array_flip([
+            'full_name', 'national_id', 'birth_date', 'gender', 'address',
+        ]));
     }
 }

@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\HasUuid;
+use App\Services\IdCards\IdCardReading;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -36,6 +37,7 @@ class RegistrationRequest extends Model
     protected $fillable = [
         'branch_id', 'full_name', 'phone', 'secondary_phone', 'national_id',
         'birth_date', 'gender', 'city', 'address', 'license_type', 'notes',
+        'id_scan', 'id_scanned_at',
         'phone_verified_at', 'status', 'decision_reason', 'reviewed_by',
         'reviewed_at', 'trainee_id', 'ip_address', 'reference',
     ];
@@ -44,6 +46,9 @@ class RegistrationRequest extends Model
     {
         return [
             'birth_date' => 'date',
+            // What a reader made of the ID photo, as IdCardReading stored it.
+            'id_scan' => 'array',
+            'id_scanned_at' => 'datetime',
             'phone_verified_at' => 'datetime',
             'reviewed_at' => 'datetime',
         ];
@@ -102,6 +107,19 @@ class RegistrationRequest extends Model
     public function idPhoto(): ?Document
     {
         return $this->documents()->where('category', 'identity')->latest()->first();
+    }
+
+    /**
+     * What a reader made of that photo, once someone has had it read.
+     *
+     * Null until then, and null forever on a request with no photo — the queue
+     * uses that to decide between showing the reading and offering to read.
+     */
+    public function idReading(): ?IdCardReading
+    {
+        return is_array($this->id_scan) && $this->id_scan !== []
+            ? IdCardReading::fromArray($this->id_scan)
+            : null;
     }
 
     public function scopeOpen(Builder $query): Builder

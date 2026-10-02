@@ -95,7 +95,36 @@
                         @endif
                     </dl>
 
-                    @php($idPhoto = $registration->documents->firstWhere('category', 'identity'))
+                    @php
+                        $idPhoto = $registration->documents->firstWhere('category', 'identity');
+
+                        $reading = $registration->idReading();
+                        $readFields = $reading?->fields() ?? [];
+
+                        // What the applicant typed, to put beside what the card
+                        // says: the two disagree often — a nickname on the form,
+                        // the full four-part name on the card — and that
+                        // disagreement is the whole reason a human is reviewing.
+                        $typedByApplicant = [
+                            'full_name' => $registration->full_name,
+                            'national_id' => $registration->national_id,
+                            'birth_date' => $registration->birth_date?->format('Y-m-d'),
+                            'gender' => $registration->gender,
+                            'city' => $registration->city,
+                            'address' => $registration->address,
+                        ];
+
+                        $readLabels = [
+                            'full_name' => 'الاسم',
+                            'national_id' => 'الرقم الوطني',
+                            'birth_date' => 'تاريخ الميلاد',
+                            'gender' => 'الجنس',
+                            'city' => 'المدينة',
+                            'address' => 'العنوان',
+                        ];
+
+                        $genderLabels = ['male' => 'ذكر', 'female' => 'أنثى'];
+                    @endphp
 
                     @if ($idPhoto)
                         {{-- Shown, not linked. The reason the centre asked for
@@ -137,6 +166,86 @@
                         </div>
                     @endif
 
+                    @if ($idPhoto)
+                        {{-- What the card itself says.
+
+                             Shown beside the applicant's own answers rather than
+                             instead of them: the reviewer decides which goes onto
+                             the trainee's file, and the form they filled in is
+                             the only record of what they claimed. --}}
+                        <div class="mt-3 rounded-xl border border-ink-200 bg-white p-3">
+                            <div class="mb-2 flex flex-wrap items-center gap-2">
+                                <p class="text-xs font-semibold text-ink-700">قراءة الهوية</p>
+
+                                @if ($reading?->confidence === 'low')
+                                    <x-ui.badge tone="warning">صورة غير واضحة</x-ui.badge>
+                                @endif
+
+                                @if ($registration->id_scanned_at)
+                                    <span class="text-[11px] text-ink-400">{{ $registration->id_scanned_at->diffForHumans() }}</span>
+                                @endif
+
+                                @canDo('registrations.manage')
+                                    @if ($canReadIds)
+                                        <form method="POST" class="ms-auto"
+                                              action="{{ route('admin.registrations.scan-id', $registration) }}">
+                                            @csrf
+                                            <x-ui.button size="sm" variant="secondary" type="submit">
+                                                {{ $reading ? 'إعادة القراءة' : 'اقرأ بيانات الهوية' }}
+                                            </x-ui.button>
+                                        </form>
+                                    @endif
+                                @endcanDo
+                            </div>
+
+                            @if ($readFields !== [])
+                                <dl class="grid gap-x-6 gap-y-1.5 text-xs sm:grid-cols-2">
+                                    @foreach ($readLabels as $field => $label)
+                                        @continue (! isset($readFields[$field]))
+
+                                        @php
+                                            $readValue = $readFields[$field];
+                                            $typedValue = $typedByApplicant[$field] ?? null;
+                                            $differs = filled($typedValue)
+                                                && trim((string) $typedValue) !== trim((string) $readValue);
+                                            $isNumeric = in_array($field, ['national_id', 'birth_date'], true);
+                                        @endphp
+
+                                        <div class="flex flex-wrap items-baseline gap-1.5">
+                                            <dt class="text-ink-500">{{ $label }}:</dt>
+                                            <dd class="font-medium text-ink-900 {{ $isNumeric ? 'font-mono' : '' }}"
+                                                @if ($isNumeric) dir="ltr" @endif>
+                                                {{ $field === 'gender' ? ($genderLabels[$readValue] ?? $readValue) : $readValue }}
+                                            </dd>
+
+                                            @if ($differs)
+                                                <span class="text-[11px] text-amber-600">
+                                                    (كتب: {{ $field === 'gender' ? ($genderLabels[$typedValue] ?? $typedValue) : $typedValue }})
+                                                </span>
+                                            @endif
+                                        </div>
+                                    @endforeach
+                                </dl>
+
+                                @if ($reading && $reading->unclear !== [])
+                                    <p class="mt-2 text-[11px] text-amber-600">
+                                        حقول لم تُقرأ بوضوح فتُركت فارغة:
+                                        {{ collect($reading->unclear)->map(fn ($field) => $readLabels[$field] ?? $field)->join('، ') }}
+                                    </p>
+                                @endif
+                            @elseif ($reading)
+                                <p class="text-xs text-ink-500">{{ $reading->message ?? 'لم تُقرأ بيانات من الصورة.' }}</p>
+                            @else
+                                <p class="text-xs text-ink-500">
+                                    لم تُقرأ الهوية بعد.
+                                    @unless ($canReadIds)
+                                        قراءة الهوية غير مفعّلة على هذا الخادم.
+                                    @endunless
+                                </p>
+                            @endif
+                        </div>
+                    @endif
+
                     @if ($registration->notes)
                         <p class="mt-2 rounded-lg bg-ink-50 p-2.5 text-xs text-ink-600">{{ $registration->notes }}</p>
                     @endif
@@ -172,6 +281,27 @@
                                     label="المدرب (اختياري)"
                                     :options="$trainers->pluck('full_name', 'id')->all()"
                                     placeholder="يُسند لاحقاً" />
+
+                                {{-- Offered only when there is something to
+                                     take across, and left unticked: the card is
+                                     on screen above, and which of the two
+                                     versions goes onto the file is the
+                                     reviewer's call, not the reader's. --}}
+                                @if ($readFields !== [])
+                                    <label class="flex items-start gap-2 rounded-lg bg-brand-50 p-2 text-xs text-ink-700">
+                                        <input type="checkbox" name="use_scan" value="1"
+                                               class="mt-0.5 rounded border-ink-300 text-brand-600">
+                                        <span>
+                                            استخدام البيانات المقروءة من الهوية
+                                            <span class="block text-[11px] text-ink-500">
+                                                {{ collect(array_keys($readFields))
+                                                    ->reject(fn ($field) => $field === 'city')
+                                                    ->map(fn ($field) => $readLabels[$field] ?? $field)
+                                                    ->join('، ') }}
+                                            </span>
+                                        </span>
+                                    </label>
+                                @endif
 
                                 <label class="flex items-center gap-2 text-xs text-ink-600">
                                     <input type="checkbox" name="create_login" value="1" checked

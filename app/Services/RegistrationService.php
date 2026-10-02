@@ -138,6 +138,8 @@ class RegistrationService
             );
         }
 
+        $this->assertNationalIdIsFree($overrides['national_id'] ?? $request->national_id);
+
         $password = null;
 
         $trainee = DB::transaction(function () use ($request, $reviewer, $overrides, $branchId, $createLogin, &$password) {
@@ -316,6 +318,29 @@ class RegistrationService
             throw BusinessRuleException::make(
                 'هذا الرقم مسجّل لدينا بالفعل أو لديه طلب قيد المعالجة. تواصل مع المركز.',
                 ['phone' => ['الرقم مستخدم.']],
+            );
+        }
+    }
+
+    /**
+     * Refuse to put a national number on a second trainee.
+     *
+     * The office's own form already forbids it, so an approval must not be the
+     * one way round it — and it is the likelier way now that the number can come
+     * from a reading of the card rather than from the applicant's typing. A
+     * duplicate here is almost always someone already enrolled applying again,
+     * which is a conversation to have rather than a second file to create.
+     */
+    protected function assertNationalIdIsFree(?string $nationalId): void
+    {
+        if (blank($nationalId)) {
+            return;
+        }
+
+        if (Trainee::where('national_id', $nationalId)->exists()) {
+            throw BusinessRuleException::make(
+                'الرقم الوطني مسجّل لمتدرب آخر. راجع ملفه قبل إنشاء ملف جديد.',
+                ['national_id' => ['الرقم الوطني مستخدم.']],
             );
         }
     }

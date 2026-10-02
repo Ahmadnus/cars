@@ -40,6 +40,15 @@ class RegistrationRequestResource extends JsonResource
                     'secondary_phone' => $this->secondary_phone,
                     'notes' => $this->notes,
                     'trainee_number' => $this->trainee?->trainee_number,
+
+                    /*
+                     | What was read off the ID photo, beside the applicant's own
+                     | answers rather than merged into them. A reviewer needs to
+                     | see that the two disagree — that is the moment the reading
+                     | earns its keep — and a client that merged them would hide
+                     | exactly that.
+                     */
+                    'id_scan' => $this->idReading()?->toArray(),
                 ],
             ),
         ];

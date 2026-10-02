@@ -79,6 +79,17 @@ Route::prefix('public/registrations')->name('public.registrations.')->group(func
     Route::post('/', [PublicRegistrationController::class, 'store'])
         ->middleware('throttle:3,1')->name('store');
 
+    /*
+     | Reading the applicant's ID photo so the form fills itself.
+     |
+     | Unauthenticated like the rest of this group, but the only endpoint here
+     | that costs the center money per call — so the throttle is the tightest in
+     | the file. Six an hour is enough for someone retaking a blurred photo a few
+     | times, and far too few to be worth pointing a script at.
+     */
+    Route::post('scan-id', [PublicRegistrationController::class, 'scanId'])
+        ->middleware('throttle:6,60')->name('scan-id');
+
     // The reference is the credential, so guessing is rate limited too.
     Route::get('{reference}', [PublicRegistrationController::class, 'status'])
         ->middleware('throttle:20,1')->name('status');
@@ -306,6 +317,10 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
 
         Route::middleware('permission:registrations.manage')->group(function () {
             Route::post('{registrationRequest}/claim', [RegistrationReviewController::class, 'claim'])->name('claim');
+
+            // Reading the attached ID photo. With the decisions rather than with
+            // viewing: it spends money and writes to the record.
+            Route::post('{registrationRequest}/scan-id', [RegistrationReviewController::class, 'scanId'])->name('scan-id');
             Route::post('{registrationRequest}/approve', [RegistrationReviewController::class, 'approve'])->name('approve');
             Route::post('{registrationRequest}/reject', [RegistrationReviewController::class, 'reject'])->name('reject');
         });

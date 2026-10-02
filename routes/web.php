@@ -150,6 +150,11 @@ Route::middleware(['auth', 'active'])->name('admin.')->group(function () {
             ->middleware('permission:registrations.view')->name('count');
 
         Route::middleware('permission:registrations.manage')->group(function () {
+            // Reading the attached ID photo. With the decisions rather than with
+            // viewing: it spends money and writes to the record, neither of
+            // which a read-only supervisor's permission promises.
+            Route::post('/{registrationRequest}/scan-id', [RegistrationRequestController::class, 'scanId'])->name('scan-id');
+
             Route::post('/{registrationRequest}/approve', [RegistrationRequestController::class, 'approve'])->name('approve');
             Route::post('/{registrationRequest}/reject', [RegistrationRequestController::class, 'reject'])->name('reject');
         });
@@ -176,6 +181,17 @@ Route::middleware(['auth', 'active'])->name('admin.')->group(function () {
         Route::get('/trainee-packages/{traineePackage}/ledger', [TraineePackageController::class, 'transactions'])
             ->name('trainee-packages.ledger');
     });
+
+    /*
+     | Reading an ID photo to fill the trainee form.
+     |
+     | Either permission opens it, because both forms use it: the receptionist
+     | registering someone at the desk, and whoever later corrects a birth date
+     | from the same card. It stores nothing, so there is nothing to scope.
+     */
+    Route::post('/trainees/scan-id', [TraineeController::class, 'scanId'])
+        ->middleware('permission:trainees.create,trainees.update')
+        ->name('trainees.scan-id');
 
     Route::middleware('permission:trainees.create')->group(function () {
         Route::get('/trainees/create/new', [TraineeController::class, 'create'])->name('trainees.create');

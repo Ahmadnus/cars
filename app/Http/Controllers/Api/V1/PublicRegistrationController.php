@@ -6,6 +6,7 @@ use App\Enums\LicenseType;
 use App\Http\Resources\RegistrationRequestResource;
 use App\Models\Branch;
 use App\Models\RegistrationRequest;
+use App\Services\IdCardService;
 use App\Services\RegistrationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -114,6 +115,43 @@ class PublicRegistrationController extends ApiController
             'reference' => $registration->reference,
             'status' => $registration->status,
         ], 'تم استلام طلبك. رقم المتابعة: '.$registration->reference);
+    }
+
+    /**
+     * Read an applicant's details off a photo of their ID, before they submit.
+     *
+     * The point of doing this here rather than only on submission is that it is
+     * the applicant who can retake the photo: they attach the card, the form
+     * fills itself, and they see immediately whether what was read matches what
+     * is in their hand. By the time staff see the request the details have
+     * already been through the one person who knows them.
+     *
+     * The photo is read and dropped — nothing is stored by this endpoint, and no
+     * request row is touched. A reading costs money and takes a few seconds, so
+     * the throttle on the route is tighter than the rest of this controller.
+     *
+     * Always answers 200, including when the card could not be read or the
+     * reader is switched off: filling the form is a convenience on an optional
+     * field, and a failure the applicant can do nothing about should not arrive
+     * as an error over a form they were in the middle of.
+     */
+    public function scanId(Request $request, IdCardService $cards): JsonResponse
+    {
+        $request->validate([
+            'id_photo' => ['required', 'image', 'mimes:jpg,jpeg,png,webp', 'max:8192'],
+        ], [], ['id_photo' => 'صورة الهوية']);
+
+        $reading = $cards->readPublicUpload($request->file('id_photo'));
+
+        return $this->ok(
+            [
+                'outcome' => $reading->outcome,
+                'fields' => $reading->fields(),
+                'unclear' => $reading->unclear,
+                'confidence' => $reading->confidence,
+            ],
+            $reading->message ?? 'تمت قراءة بيانات الهوية. راجعها قبل الإرسال.',
+        );
     }
 
     /**

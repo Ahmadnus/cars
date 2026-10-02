@@ -35,6 +35,15 @@ class StoreTraineeRequest extends FormRequest
             ])],
             'notes' => ['nullable', 'string', 'max:2000'],
             'photo' => ['nullable', 'image', 'max:4096'],
+
+            /*
+             | The photo of the ID the form was filled from.
+             |
+             | Optional, and stored as the trainee's identity document rather
+             | than as a column. The limits mirror DocumentService, so a file
+             | accepted here cannot be refused when it is stored.
+             */
+            'id_photo' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:8192'],
         ];
     }
 
@@ -55,6 +64,7 @@ class StoreTraineeRequest extends FormRequest
             'status' => 'الحالة',
             'notes' => 'ملاحظات',
             'photo' => 'الصورة الشخصية',
+            'id_photo' => 'صورة الهوية',
         ];
     }
 

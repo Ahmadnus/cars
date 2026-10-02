@@ -335,6 +335,20 @@ state → validate balance → record completion → deduct one lesson → write
 ledger row → record the evaluation → roll skill levels forward → update trainee
 progress → notify → audit. All of it, or none of it.
 
+**What a reading of an ID says is a draft, never a fact.** An applicant's ID
+photo can be read by a vision model and the fields it returns fill the form —
+in the app before the applicant submits, in the queue beside what they typed,
+and in the trainee form at the desk. Three rules hold everywhere: a box someone
+has already filled is never written over; a field is kept only when it is the
+shape that field can be — a national number that is not ten digits is dropped,
+not stored, because a wrong value that looks checked is worse than an empty one;
+and nothing reaches a trainee's record until a member of staff chooses it, which
+on the queue is a checkbox next to the card's own values. Switched on by a key
+in `.env`; with none the forms still take the photo and simply do not offer to
+read it. A reading costs money, so it is never automatic on arrival: staff ask
+for one, the answer is kept on the request, and public readings are capped per
+day as well as per IP. See `config/id_reader.php`.
+
 **The cashbox always equals its ledger.** Every posting locks the cashbox, reads
 the balance, appends an immutable line carrying the resulting balance, and
 writes the new balance back — inside the caller's transaction. Corrections are
@@ -445,6 +459,7 @@ replaces that device's token rather than accumulating stale ones.
 | Reports | `GET reports/revenue`, `GET reports/expenses`, `GET reports/profit` |
 | Notifications | `GET notifications`, `POST notifications/{id}/read`, `POST notifications/read-all`, `POST notifications/device` |
 | Skills | `GET training-skills` |
+| ID reading | `POST public/registrations/scan-id` (no account), `POST registrations/{id}/scan-id` (`registrations.manage`) |
 
 `/appointments` and `/training-sessions` are the **same resource** under two
 prefixes — see [Design decisions](#design-decisions).
@@ -601,6 +616,7 @@ routes/
 | `DashboardService` | Permission-aware dashboard assembly |
 | `NotificationService` | Event routing and channel selection |
 | `DocumentService` | Secure private file storage |
+| `IdCardService` | Reading an applicant's details off a photo of their ID |
 | `PdfService` | Server-side Arabic PDF generation |
 | `AuditLogger` | The only writer of the audit trail |
 

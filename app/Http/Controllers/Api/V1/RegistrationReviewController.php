@@ -6,6 +6,7 @@ use App\Http\Resources\RegistrationRequestResource;
 use App\Models\Branch;
 use App\Models\RegistrationRequest;
 use App\Models\Trainer;
+use App\Services\IdCardService;
 use App\Services\RegistrationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -19,8 +20,10 @@ use Illuminate\Http\Request;
  */
 class RegistrationReviewController extends ApiController
 {
-    public function __construct(protected RegistrationService $registrations)
-    {
+    public function __construct(
+        protected RegistrationService $registrations,
+        protected IdCardService $cards,
+    ) {
     }
 
     public function index(Request $request): JsonResponse
@@ -67,6 +70,25 @@ class RegistrationReviewController extends ApiController
     }
 
     /**
+     * Have the attached ID photo read.
+     *
+     * The same deliberate action as on the web queue, and for the same reason: a
+     * reading costs money, so it happens when a reviewer asks rather than on every
+     * request that arrives. The result is stored on the request, so both surfaces
+     * show the same reading and neither pays for it twice.
+     */
+    public function scanId(RegistrationRequest $registrationRequest): JsonResponse
+    {
+        $reading = $this->cards->forRegistration($registrationRequest, refresh: true);
+
+        if (! $reading->succeeded()) {
+            return $this->failed($reading->message ?? 'تعذّرت قراءة الهوية.');
+        }
+
+        return $this->ok($reading->toArray(), 'تم قراءة بيانات الهوية.');
+    }
+
+    /**
      * Accept the request and create the trainee.
      *
      * Staff may correct what the applicant typed on the way through — people
@@ -83,6 +105,12 @@ class RegistrationReviewController extends ApiController
             'national_id' => ['nullable', 'string', 'max:30'],
             'license_type' => ['nullable', 'string', 'max:30'],
             'create_login' => ['nullable', 'boolean'],
+
+            // Take what was read off the ID instead of typing it back in. A flag
+            // rather than the values themselves: they are read from the stored
+            // reading, so what goes onto the trainee is what the reviewer was
+            // shown and not whatever a client chose to send.
+            'use_scan' => ['nullable', 'boolean'],
         ], [], [
             'branch_id' => 'الفرع',
             'trainer_id' => 'المدرب',
@@ -100,6 +128,17 @@ class RegistrationReviewController extends ApiController
             'national_id' => $data['national_id'] ?? null,
             'license_type' => $data['license_type'] ?? null,
         ], static fn ($value) => $value !== null);
+
+        /*
+         | The reading fills what the reviewer did not correct by hand, so an
+         | explicit override always wins over the card.
+         */
+        if ($request->boolean('use_scan')) {
+            $overrides += array_intersect_key(
+                $registrationRequest->idReading()?->fields() ?? [],
+                array_flip(['full_name', 'national_id', 'birth_date', 'gender', 'address']),
+            );
+        }
 
         $result = $this->registrations->approve(
             $registrationRequest,

@@ -13,14 +13,18 @@ use App\Models\Trainer;
 use App\Models\TrainingSkill;
 use App\Services\AccountService;
 use App\Services\AuditLogger;
+use App\Services\DocumentService;
+use App\Services\IdCardService;
 use App\Services\NumberGenerator;
 use App\Services\PaymentService;
 use App\Services\TraineeBalanceService;
 use App\Services\TrainingSessionService;
 use App\Support\BranchContext;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 
@@ -28,11 +32,16 @@ class TraineeController extends Controller
 {
     use IssuesLoginAccounts;
 
+    /** Form fields that are files rather than columns on the trainee. */
+    protected const UPLOADS = ['photo', 'id_photo'];
+
     public function __construct(
         protected BranchContext $branchContext,
         protected NumberGenerator $numbers,
         protected AuditLogger $audit,
         protected TraineeBalanceService $balances,
+        protected DocumentService $documents,
+        protected IdCardService $cards,
     ) {
     }
 
@@ -91,6 +100,10 @@ class TraineeController extends Controller
             'trainers' => $this->trainerOptions($request),
             'branches' => $this->branchOptions($request),
             'statuses' => $this->statuses(),
+            // Whether the form offers to fill itself from an ID photo. Off when
+            // no reader is configured, so the card never appears as a control
+            // that silently does nothing.
+            'canReadIds' => $this->cards->isEnabled(),
         ]);
     }
 
@@ -99,7 +112,10 @@ class TraineeController extends Controller
         $data = $request->validated();
 
         $trainee = DB::transaction(function () use ($data, $request) {
-            $trainee = Trainee::create(array_merge($data, [
+            // The uploads are not columns. They have to come out before the
+            // model is filled, or strict mass assignment refuses the whole
+            // record over an attribute that was never going to be stored.
+            $trainee = Trainee::create(array_merge(Arr::except($data, self::UPLOADS), [
                 'trainee_number' => $this->numbers->traineeNumber(),
                 'branch_id' => $data['branch_id'] ?? $this->branchContext->defaultForWrite($request->user()),
                 'status' => $data['status'] ?? 'new',
@@ -115,6 +131,8 @@ class TraineeController extends Controller
 
             return $trainee;
         });
+
+        $this->keepIdPhoto($request, $trainee);
 
         // The office creates the trainee's login here rather than making them
         // apply through the app: someone standing at the desk should leave able
@@ -207,6 +225,7 @@ class TraineeController extends Controller
             'trainers' => $this->trainerOptions($request),
             'branches' => $this->branchOptions($request),
             'statuses' => $this->statuses(),
+            'canReadIds' => $this->cards->isEnabled(),
         ]);
     }
 
@@ -216,7 +235,7 @@ class TraineeController extends Controller
         $original = $trainee->getOriginal();
 
         DB::transaction(function () use ($trainee, $data, $request, $original) {
-            $trainee->fill($data);
+            $trainee->fill(Arr::except($data, self::UPLOADS));
 
             if ($request->hasFile('photo')) {
                 $trainee->photo_path = $request->file('photo')->store('trainees/photos', 'public');
@@ -227,9 +246,66 @@ class TraineeController extends Controller
             $this->audit->logUpdate('trainee.updated', $trainee, $original);
         });
 
+        $this->keepIdPhoto($request, $trainee);
+
         return redirect()
             ->route('admin.trainees.show', $trainee)
             ->with('toast', ['type' => 'success', 'message' => 'تم تحديث بيانات المتدرب.']);
+    }
+
+    /**
+     * Read a photo of an ID so the form in front of the receptionist fills
+     * itself.
+     *
+     * Answers JSON rather than redirecting because of where it is used: someone
+     * is halfway through a form with a phone number already typed, and a round
+     * trip would either lose that or have to echo the whole form back to restore
+     * it. The reading is handed to the page and the page fills the empty boxes.
+     *
+     * Nothing is stored here. The photo is read and dropped; it is kept only if
+     * the form is actually submitted with it, which is where it becomes the
+     * trainee's identity document.
+     */
+    public function scanId(Request $request): JsonResponse
+    {
+        $request->validate([
+            'id_photo' => ['required', 'image', 'mimes:jpg,jpeg,png,webp', 'max:8192'],
+        ], [], ['id_photo' => 'صورة الهوية']);
+
+        $reading = $this->cards->readUpload($request->file('id_photo'));
+
+        return response()->json([
+            'outcome' => $reading->outcome,
+            'fields' => $reading->fields(),
+            'unclear' => $reading->unclear,
+            'message' => $reading->message,
+        ]);
+    }
+
+    /**
+     * Keep the ID photo the form was filled from.
+     *
+     * Stored as the trainee's identity document, the same category and the same
+     * private disk as a photo that arrived with a join request — so a trainee
+     * registered at the desk ends up with the same file on their record as one
+     * who applied through the app.
+     *
+     * Outside the transaction and swallowed on failure: the trainee is already
+     * saved by now, and a document that failed to store is something staff can
+     * upload again from the documents tab. Losing the record over it would not
+     * be.
+     */
+    protected function keepIdPhoto(Request $request, Trainee $trainee): void
+    {
+        if (! $request->hasFile('id_photo')) {
+            return;
+        }
+
+        try {
+            $this->documents->store($request->file('id_photo'), $trainee, 'identity', 'صورة الهوية');
+        } catch (\Throwable $e) {
+            report($e);
+        }
     }
 
     /**
