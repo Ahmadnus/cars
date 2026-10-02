@@ -126,8 +126,12 @@ final class JordanianIdCardLayout
                 continue;
             }
 
+            $found = [];
+
+            // The label's own chunk first: a reader that merged a short label
+            // with its value has already paired them for us.
             if ($value = self::shaped(self::afterLabel($label['text'], $labels), $shape)) {
-                return $value;
+                $found[] = $value;
             }
 
             $tolerance = max(12, (int) round($label['height'] * 0.6));
@@ -145,12 +149,6 @@ final class JordanianIdCardLayout
             // nearer chunk is the one that belongs to this label.
             usort($sameRow, fn (array $a, array $b) => $b['left'] <=> $a['left']);
 
-            foreach ($sameRow as $candidate) {
-                if ($value = self::shaped($candidate['text'], $shape)) {
-                    return $value;
-                }
-            }
-
             $below = self::candidates(
                 $chunks,
                 $index,
@@ -160,14 +158,45 @@ final class JordanianIdCardLayout
 
             usort($below, fn (array $a, array $b) => self::centreY($a) <=> self::centreY($b));
 
-            foreach ($below as $candidate) {
+            foreach ([...$sameRow, ...$below] as $candidate) {
                 if ($value = self::shaped($candidate['text'], $shape)) {
-                    return $value;
+                    $found[] = $value;
                 }
+            }
+
+            if ($found !== []) {
+                return self::best($found, $shape);
             }
         }
 
         return null;
+    }
+
+    /**
+     * Which of the candidates to keep.
+     *
+     * Position decides for most fields, so the first one found wins. A name is
+     * the exception: a Jordanian card prints it twice, in Arabic and in Latin
+     * transliteration, and which of the two the reader puts nearest the label is
+     * chance. The Arabic is the spelling the centre files, prints and reads out,
+     * so it is preferred wherever it appears — and a card that carries no Arabic
+     * at all still yields the Latin one rather than nothing.
+     *
+     * @param  list<string>  $found
+     */
+    private static function best(array $found, string $shape): string
+    {
+        if (! in_array($shape, ['name', 'place'], true)) {
+            return $found[0];
+        }
+
+        foreach ($found as $value) {
+            if (self::hasArabic($value)) {
+                return $value;
+            }
+        }
+
+        return $found[0];
     }
 
     /**
@@ -302,6 +331,9 @@ final class JordanianIdCardLayout
      * Two words at least — a single word next to "الاسم" is far more often a
      * second label the reader placed badly than it is a name — and no digits,
      * which rules out the numbers that share the card's rows.
+     *
+     * When the chunk holds both spellings at once, which happens where the two
+     * columns of a card run together, the Latin is dropped and the Arabic kept.
      */
     private static function asName(string $text): ?string
     {
@@ -309,21 +341,47 @@ final class JordanianIdCardLayout
             return null;
         }
 
+        $text = self::arabicPart($text);
         $words = preg_split('/\s+/u', $text) ?: [];
 
         return count($words) >= 2 && mb_strlen($text) >= 6 ? $text : null;
     }
 
-    /** A place: one or two words, no digits. */
+    /** A place: one to three words, no digits, Arabic where both are printed. */
     private static function asPlace(string $text): ?string
     {
         if (preg_match('/\d/u', self::westernDigits($text)) === 1) {
             return null;
         }
 
+        $text = self::arabicPart($text);
         $words = preg_split('/\s+/u', $text) ?: [];
 
         return count($words) <= 3 && mb_strlen($text) >= 3 ? $text : null;
+    }
+
+    /**
+     * The Arabic words of a mixed line, or the line untouched when it has none.
+     *
+     * A name printed "رامي سامر محمود الحديد RAMI SAMER MAHMOUD ALHADID" must be
+     * stored as the Arabic alone: it is what the licence paperwork carries, and a
+     * mixed string is what nobody can search for later.
+     */
+    private static function arabicPart(string $text): string
+    {
+        $words = preg_split('/\s+/u', trim($text)) ?: [];
+
+        $arabic = array_values(array_filter(
+            $words,
+            static fn (string $word) => self::hasArabic($word),
+        ));
+
+        return $arabic === [] ? trim($text) : implode(' ', $arabic);
+    }
+
+    private static function hasArabic(string $text): bool
+    {
+        return preg_match('/\p{Arabic}/u', $text) === 1;
     }
 
     // ---------------------------------------------------------- the fallbacks

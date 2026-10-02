@@ -165,6 +165,47 @@ class JordanianIdCardLayoutTest extends TestCase
         $this->assertNull($reading->nationalId);
     }
 
+    /**
+     * A card prints the name twice — Arabic and Latin transliteration — and which
+     * one the reader puts nearest the label is chance. The Arabic is the spelling
+     * the centre files and reads out, so it wins wherever it sits.
+     */
+    public function test_it_prefers_the_arabic_name_over_the_latin_one(): void
+    {
+        $reading = $this->read([
+            ['الاسم', 593, 358, 104],
+            ['RAMI SAMER MAHMOUD ALHADID', 32, 358, 446],
+            ['رامي سامر محمود الحديد', 32, 410, 446],
+        ]);
+
+        $this->assertSame('رامي سامر محمود الحديد', $reading->fullName);
+    }
+
+    /** Both spellings in one chunk: the Latin half is dropped, not stored. */
+    public function test_it_keeps_only_the_arabic_half_of_a_mixed_name(): void
+    {
+        $reading = $this->read([
+            ['الاسم', 593, 358, 104],
+            ['رامي سامر محمود الحديد RAMI SAMER MAHMOUD', 32, 358, 700],
+            ['مكان الولاده', 488, 593, 209],
+            ['عمان Amman', 275, 593, 183],
+        ]);
+
+        $this->assertSame('رامي سامر محمود الحديد', $reading->fullName);
+        $this->assertSame('عمان', $reading->city);
+    }
+
+    /** A card with no Arabic at all still yields its name rather than nothing. */
+    public function test_a_latin_only_card_still_gives_a_name(): void
+    {
+        $reading = $this->read([
+            ['الاسم', 593, 358, 104],
+            ['RAMI SAMER MAHMOUD ALHADID', 32, 358, 446],
+        ]);
+
+        $this->assertSame('RAMI SAMER MAHMOUD ALHADID', $reading->fullName);
+    }
+
     /** Arabic-Indic numerals, which is how a card may print the number. */
     public function test_it_reads_arabic_numerals(): void
     {
