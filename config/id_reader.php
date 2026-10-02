@@ -27,6 +27,39 @@ return [
 
     'enabled' => env('ID_READER_ENABLED', true),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Who does the reading
+    |--------------------------------------------------------------------------
+    |
+    | `ocrspace` is the free one: OCR with a free monthly allowance and no card
+    | on file. It returns words and where they sit, and the application works out
+    | which word is the national number — so it reads a creased or angled card
+    | less well, and leaves more fields empty, which is the failure we want.
+    |
+    | `claude` reads the card with a vision model instead: better on a poor
+    | photo, and it costs per reading.
+    |
+    | Either way the photo leaves the server to be read, and either way what
+    | comes back is a draft a human confirms. Anything else — a missing key, an
+    | unknown name here — binds the log reader, which reads nothing and says so.
+    |
+    */
+
+    'driver' => env('ID_READER_DRIVER', 'ocrspace'),
+
+    /*
+    | OCR.space. A free key arrives by email from ocr.space/ocrapi — no card, no
+    | billing account. Only engine 3 accepts Arabic (the others refuse the
+    | request), its allowance is a few thousand readings a month, and uploads are
+    | capped at 1MB, which the reader handles by recompressing the photo.
+    */
+    'ocr_space' => [
+        'key' => env('OCR_SPACE_API_KEY'),
+        'engine' => (int) env('OCR_SPACE_ENGINE', 3),
+        'language' => env('OCR_SPACE_LANGUAGE', 'ara'),
+    ],
+
     'api_key' => env('ANTHROPIC_API_KEY'),
 
     'model' => env('ID_READER_MODEL', 'claude-opus-5-5'),

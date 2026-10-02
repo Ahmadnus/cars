@@ -5,6 +5,7 @@ namespace App\Providers;
 use App\Services\IdCards\ClaudeIdCardReader;
 use App\Services\IdCards\IdCardReader;
 use App\Services\IdCards\LogIdCardReader;
+use App\Services\IdCards\OcrSpaceIdCardReader;
 use App\Services\NotificationService;
 use App\Services\Notifications\ChannelGateway;
 use App\Services\Notifications\FcmGateway;
@@ -58,23 +59,40 @@ class AppServiceProvider extends ServiceProvider
 
         /*
          | Reading an ID photo. Two yeses again — switched on in config and a key
-         | present — with the log reader behind it when either is missing, so the
-         | forms still work and simply do not offer to fill themselves.
+         | present for the chosen provider — with the log reader behind it when
+         | either is missing, so the forms still work and simply do not offer to
+         | fill themselves.
          */
         $this->app->singleton(IdCardReader::class, function () {
-            $key = config('id_reader.api_key');
-
-            if (! config('id_reader.enabled') || blank($key)) {
+            if (! config('id_reader.enabled')) {
                 return new LogIdCardReader;
             }
 
-            return new ClaudeIdCardReader(
-                enabled: true,
-                apiKey: (string) $key,
-                model: (string) config('id_reader.model', 'claude-opus-5-5'),
-                effort: (string) config('id_reader.effort', 'low'),
-                timeout: (int) config('id_reader.timeout', 60),
-            );
+            return match ((string) config('id_reader.driver', 'ocrspace')) {
+                'ocrspace' => blank(config('id_reader.ocr_space.key'))
+                    ? new LogIdCardReader
+                    : new OcrSpaceIdCardReader(
+                        enabled: true,
+                        apiKey: (string) config('id_reader.ocr_space.key'),
+                        engine: (int) config('id_reader.ocr_space.engine', 3),
+                        language: (string) config('id_reader.ocr_space.language', 'ara'),
+                        timeout: (int) config('id_reader.timeout', 60),
+                    ),
+
+                'claude' => blank(config('id_reader.api_key'))
+                    ? new LogIdCardReader
+                    : new ClaudeIdCardReader(
+                        enabled: true,
+                        apiKey: (string) config('id_reader.api_key'),
+                        model: (string) config('id_reader.model', 'claude-opus-5-5'),
+                        effort: (string) config('id_reader.effort', 'low'),
+                        timeout: (int) config('id_reader.timeout', 60),
+                    ),
+
+                // An unknown name is a configuration mistake, and a reader that
+                // reads nothing is the safe way to report one.
+                default => new LogIdCardReader,
+            };
         });
     }
 

@@ -343,11 +343,15 @@ has already filled is never written over; a field is kept only when it is the
 shape that field can be — a national number that is not ten digits is dropped,
 not stored, because a wrong value that looks checked is worse than an empty one;
 and nothing reaches a trainee's record until a member of staff chooses it, which
-on the queue is a checkbox next to the card's own values. Switched on by a key
-in `.env`; with none the forms still take the photo and simply do not offer to
-read it. A reading costs money, so it is never automatic on arrival: staff ask
-for one, the answer is kept on the request, and public readings are capped per
-day as well as per IP. See `config/id_reader.php`.
+on the queue is a checkbox next to the card's own values. Two providers sit behind one
+seam: `ocrspace` (the default, free — OCR plus a layout reader that pairs each
+label with the value beside it, because a Jordanian card prints two national
+numbers and the mother's is one of them) and `claude` (a vision model, better on
+a poor photo, paid per reading). Switched on by that provider's key in `.env`;
+with none the forms still take the photo and simply do not offer to read it. A
+reading is never automatic on arrival — staff ask for one, the answer is kept on
+the request, and public readings are capped per day as well as per IP. See
+`config/id_reader.php`.
 
 **The cashbox always equals its ledger.** Every posting locks the cashbox, reads
 the balance, appends an immutable line carrying the resulting balance, and
